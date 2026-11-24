@@ -32,9 +32,8 @@ post("/api/store/reservations", async ({ body, req }) => {
   if (!Number.isSafeInteger(productId) || productId < 1) throw new HttpError(400, "Не удалось определить товар");
   const product = await db.get("SELECT id,name,slug,sku,status,robots_index,availability_status,is_18_plus,is_reservable,price_raw,currency FROM store_products WHERE id=?", [productId]);
   if (!product || product.status !== "published" || Number(product.robots_index ?? 1) === 0) throw new HttpError(404, "Товар больше недоступен в каталоге");
-  if (product.availability_status === "out_of_stock") throw new HttpError(409, "Товар сейчас отсутствует в наличии");
   if (Number(product.is_reservable) === 0) throw new HttpError(409, "Для этого товара временно недоступно бронирование");
-  const variants = await db.all("SELECT id,name,sku,price_raw,currency FROM store_product_variants WHERE product_id=? ORDER BY sort_order,id", [productId]);
+  const variants = await db.all("SELECT id,name,sku,price_raw,currency,availability_status FROM store_product_variants WHERE product_id=? ORDER BY sort_order,id", [productId]);
   let variant = null;
   const requestedVariantId = body.variant_id === null || body.variant_id === undefined || body.variant_id === "" ? null : Number(body.variant_id);
   if (requestedVariantId !== null) {
@@ -46,6 +45,7 @@ post("/api/store/reservations", async ({ body, req }) => {
   } else if (variants.length === 1) {
     variant = variants[0];
   }
+  if ((variant?.availability_status || product.availability_status) === "out_of_stock") throw new HttpError(409, "Выбранный товар сейчас отсутствует в наличии");
   const variantImage = variant ? await db.get("SELECT url_original FROM store_product_images WHERE product_id=? AND variant_id=? ORDER BY position,id LIMIT 1", [productId, variant.id]) : null;
   const activePriceRaw = variant?.price_raw || product.price_raw;
   const activeCurrency = String(variant?.currency || product.currency || "RUB").toUpperCase();

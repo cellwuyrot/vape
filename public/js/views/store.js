@@ -144,9 +144,8 @@ export async function renderStore(root) {
   async function editProduct(p) {
     if (!Array.isArray(p.variants) || !Array.isArray(p.images)) {
       try {
-        const query = encodeURIComponent(p.sku || p.name || String(p.id));
-        const response = await api(`/store/admin?page=1&page_size=100&q=${query}`);
-        const fullProduct = (response.data?.products || []).find((item) => Number(item.id) === Number(p.id));
+        const response = await api(`/store/products/${p.id}`);
+        const fullProduct = response.data || response;
         if (fullProduct) Object.assign(p, fullProduct);
       } catch (error) {
         toast(`Не удалось загрузить варианты товара: ${error.message}`);
@@ -310,9 +309,8 @@ export async function renderStore(root) {
   async function editProductVariants(p, { onSaved } = {}) {
     // Always reload the product snapshot so the variant editor is synchronised with DB state.
     try {
-      const query = encodeURIComponent(p.sku || p.name || String(p.id));
-      const response = await api(`/store/admin?page=1&page_size=100&q=${query}`);
-      const fullProduct = (response.data?.products || []).find((item) => Number(item.id) === Number(p.id));
+      const response = await api(`/store/products/${p.id}`);
+      const fullProduct = response.data || response;
       if (!fullProduct) throw new Error("Товар не найден в ответе каталога");
       Object.assign(p, fullProduct);
     } catch (error) { toast(`Не удалось обновить данные товара: ${error.message}`); return; }
@@ -393,14 +391,18 @@ export async function renderStore(root) {
         const sku = h("input", { type: "text", maxlength: "100", value: variant.sku || "", placeholder: "Уникальный SKU варианта" });
         const price = h("input", { type: "text", maxlength: "80", value: variant.price_raw || "", placeholder: "Цена варианта из источника" });
         const oldPrice = h("input", { type: "text", maxlength: "80", value: variant.old_price_raw || "", placeholder: "Старая цена, если есть" });
-        const availability = h("input", { type: "text", maxlength: "120", value: variant.availability_label_raw || "", placeholder: "Наличие варианта" });
+        const availability = h("input", { type: "text", maxlength: "120", value: variant.availability_label_raw || "", placeholder: "Подпись наличия" });
+        const variantDescription = h("textarea", { rows: "3", maxlength: "5000", placeholder: "Пусто — описание модели" }, variant.description || "");
+        const variantStatus = h("select", {}, ...[["", "Как у товара"], ["unknown", "Уточняется"], ["in_stock", "В наличии"], ["out_of_stock", "Отсутствует"], ["preorder", "Предзаказ"]].map(([value, label]) => h("option", { value, selected: (variant.availability_status || "") === value }, label)));
         const sortOrder = h("input", { type: "number", min: "0", max: "100000", value: String(variant.sort_order ?? index), placeholder: "Порядок" });
-        const extra = h("textarea", { rows: "3", spellcheck: "false", placeholder: '{"Вкус":"...","Объём":"..."}' }, JSON.stringify(attrs, null, 2));
+        const extra = h("textarea", { rows: "3", spellcheck: "false", placeholder: '{"Вкус":"...","Объём":"..."}' }, variant._extraDraft ?? JSON.stringify(attrs, null, 2));
+        for (const [control, key] of [[name, "name"], [sku, "sku"], [price, "price_raw"], [oldPrice, "old_price_raw"], [availability, "availability_label_raw"], [sortOrder, "sort_order"], [variantDescription, "description"], [variantStatus, "availability_status"], [extra, "_extraDraft"]]) control.addEventListener("input", () => { variant[key] = control.value; });
+        color.addEventListener("input", () => { const updated = { ...(variant.attributes || {}) }; for (const key of Object.keys(updated)) if (/цвет|color|colour|оттенок|shade/i.test(key)) delete updated[key]; updated.color = color.value; variant.attributes = updated; });
         const save = h("button", { type: "button", class: "btn solid", onclick: async () => {
           let attributes;
           try { attributes = parseAttributes(extra.value); }
           catch (error) { toast(error.message); return; }
-          const body = { name: name.value.trim(), color: color.value.trim(), sku: sku.value.trim(), price_raw: price.value.trim(), old_price_raw: oldPrice.value.trim(), availability_label_raw: availability.value.trim(), sort_order: Number(sortOrder.value || 0), attributes };
+          const body = { name: name.value.trim(), color: color.value.trim(), sku: sku.value.trim(), price_raw: price.value.trim(), old_price_raw: oldPrice.value.trim(), availability_label_raw: availability.value.trim(), availability_status: variantStatus.value, description: variantDescription.value.trim(), sort_order: Number(sortOrder.value || 0), attributes };
           try {
             const response = await api(variant.id ? `/store/products/${p.id}/variants/${variant.id}` : `/store/products/${p.id}/variants`, { method: variant.id ? "PUT" : "POST", body });
             const saved = response.data || response;
@@ -411,7 +413,7 @@ export async function renderStore(root) {
             renderImageList();
           } catch (error) { toast(error.message); }
         } }, variant.id ? "Сохранить вариант" : "Создать вариант");
-        const remove = h("button", { type: "button", class: "btn danger", disabled: !variant.id, onclick: async () => {
+        const remove = h("button", { type: "button", class: "btn danger", onclick: async () => {
           if (!variant.id) { variants.splice(index, 1); renderVariantList(); return; }
           if (!confirm(`Удалить вариант «${variant.name}»? Его фотографии останутся общими фотографиями товара.`)) return;
           try {
@@ -482,7 +484,7 @@ export async function renderStore(root) {
           h("div", { class: "seo-editor-grid" },
             makeField("Название варианта", name), makeField("Цвет / подпись на витрине", color),
             makeField("Артикул варианта (уникальный в товаре)", sku), makeField("Цена варианта", price),
-            makeField("Старая цена", oldPrice), makeField("Наличие", availability),
+            makeField("Старая цена", oldPrice), makeField("Подпись наличия", availability), makeField("Статус наличия варианта", variantStatus), makeField("Описание варианта", variantDescription, "Пусто — используется описание товара."),
             makeField("Порядок показа", sortOrder), makeField("Дополнительные атрибуты JSON", extra, "Цвет хранится отдельно; остальные характеристики сохраняются как JSON."),
           ),
           h("div", { class: "store-variant-editor-actions" }, save, remove),
@@ -822,30 +824,76 @@ export async function renderStore(root) {
     if (tab === "products") {
       toolbar.append(button("Импорт XLSX / CSV", () => openImport(reload), "btn quiet"));
       toolbar.append(button("⌕ Умный поиск товаров", openSmartSearch, "btn quiet"));
-      const folderInput = h("input", { type: "file", multiple: true, webkitdirectory: true, directory: true, hidden: true, accept: ".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" });
+      const folderInput = h("input", { type: "file", multiple: true, webkitdirectory: true, directory: true, hidden: true });
       folderInput.addEventListener("change", async () => {
-        const files = Array.from(folderInput.files || []).filter((file) => /\.(?:jpe?g|png|webp)$/i.test(file.name));
-        if (!files.length) { toast("В выбранной папке нет JPG, PNG или WebP файлов"); folderInput.value = ""; return; }
-        if (files.length > 110) { toast("Выбери не более 110 изображений за один импорт"); folderInput.value = ""; return; }
-        const summary = { matched: 0, unmatched: 0, ambiguous: 0, failed: 0 };
-        const progress = h("p", { class: "muted" }, `Загрузка изображений: 0 из ${files.length}`);
-        body.replaceChildren(progress);
-        for (let index = 0; index < files.length; index += 1) {
-          try {
-            const relativePath = files[index].webkitRelativePath || files[index].name;
-            const response = await upload("/store/images/import", files[index], { "X-File-Path": encodeURIComponent(relativePath) });
-            const result = response.data || response;
-            if (result.status === "matched") summary.matched += 1;
-            else if (["ambiguous", "ambiguous_variant"].includes(result.status)) summary.ambiguous += 1;
-            else summary.unmatched += 1;
-          } catch { summary.failed += 1; }
-          progress.textContent = `Загрузка изображений: ${index + 1} из ${files.length}`;
-        }
+        const selected = Array.from(folderInput.files || []);
         folderInput.value = "";
-        await reload();
-        toast(`Фото привязаны: ${summary.matched}. Не найдено: ${summary.unmatched}. Неоднозначно: ${summary.ambiguous}. Ошибки: ${summary.failed}.`);
+        const files = selected.filter((file) => /\.(?:jpe?g|png|webp)$/i.test(file.name));
+        const tables = selected.filter((file) => /\.(?:csv|xlsx)$/i.test(file.name));
+        if (!files.length && !tables.length) { toast("В папке нет таблицы CSV/XLSX или изображений"); return; }
+        if (tables.length > 1) { toast("Оставьте в папке только одну таблицу CSV или XLSX"); return; }
+        const progress = h("p", {}, "Подготовка…");
+        const results = h("div", { style: { maxHeight: "45vh", overflow: "auto" } });
+        const actions = h("div", { class: "row" });
+        const close = sheet("Импорт папки товаров и фото", h("div", {}, h("p", { class: "muted" }, "Папка может содержать одну таблицу CSV/XLSX и фотографии в подпапках SKU товара / SKU варианта. Таблица импортируется после проверки, затем отдельно подтверждаются фото. Ненайденные файлы не записываются."), progress, results, actions));
+        let calls = 0;
+        let windowStart = Date.now();
+        const send = async (file, preview) => {
+          if (calls >= 80) { const delay = Math.max(0, 61000 - (Date.now() - windowStart)); if (delay) { progress.textContent = `Пауза из-за лимита загрузки: ${Math.ceil(delay / 1000)} сек.`; await new Promise((resolve) => setTimeout(resolve, delay)); } calls = 0; windowStart = Date.now(); }
+          calls += 1;
+          const response = await upload("/store/images/import", file, { "X-File-Path": encodeURIComponent(file.webkitRelativePath || file.name), ...(preview ? { "X-Import-Preview": "1" } : {}) });
+          return response.data || response;
+        };
+        const showPhotos = async () => {
+          actions.replaceChildren();
+          if (!files.length) { progress.textContent = "Таблица обработана. Фотографий в папке нет."; actions.append(h("button", { class: "btn quiet", onclick: close }, "Закрыть")); await reload(); return; }
+          const checked = [];
+          for (let index = 0; index < files.length; index += 1) {
+            const file = files[index];
+            try { checked.push({ file, result: await send(file, true) }); }
+            catch (error) { checked.push({ file, result: { status: "error", detail: error.message } }); }
+            progress.textContent = `Проверено фото: ${index + 1} из ${files.length}`;
+          }
+          const labels = { matched: "готово", duplicate: "уже загружено", unmatched: "товар не найден", unmatched_variant: "вариант не найден", ambiguous: "несколько товаров", ambiguous_variant: "несколько вариантов", error: "ошибка" };
+          const display = () => results.replaceChildren(...checked.map(({ file, result }) => h("p", {}, `${file.webkitRelativePath || file.name} — ${labels[result.status] || result.status}${result.product_name ? `: ${result.product_name}${result.variant_name ? ` / ${result.variant_name}` : " / общее фото"}` : ""}${result.detail ? ` (${result.detail})` : ""}`)));
+          display();
+          const ready = checked.filter((entry) => entry.result.status === "matched");
+          progress.textContent = `Готово к загрузке: ${ready.length} из ${files.length}. Остальные файлы перечислены ниже.`;
+          const apply = h("button", { class: "btn solid", type: "button", disabled: !ready.length, onclick: async () => {
+            apply.disabled = true;
+            for (let index = 0; index < ready.length; index += 1) {
+              try { ready[index].result = await send(ready[index].file, false); }
+              catch (error) { ready[index].result = { status: "error", detail: error.message }; }
+              progress.textContent = `Обработано фото: ${index + 1} из ${ready.length}`;
+            }
+            display();
+            const saved = checked.filter((entry) => entry.result.status === "matched").length;
+            progress.textContent = `Загружено: ${saved}. Необработанные файлы и ошибки перечислены ниже.`;
+            await reload();
+          } }, "Подтвердить загрузку фото");
+          actions.append(apply, h("button", { class: "btn quiet", type: "button", onclick: close }, "Закрыть"));
+        };
+        if (!tables.length) { await showPhotos(); return; }
+        try {
+          const response = await upload("/import/preview?entity=products", tables[0]);
+          const preview = response.data || response;
+          if (!Object.values(preview.mapping || {}).includes("name")) throw new Error("Название товара не распознано. Импортируйте таблицу через мастер XLSX/CSV с ручным сопоставлением, затем загрузите папку фото.");
+          const checked = await api("/import/apply", { method: "POST", body: { id: preview.id, mapping: preview.mapping, dry_run: true } });
+          progress.textContent = `Таблица ${tables[0].name}: ${checked.total} строк; создать: ${checked.created}, обновить: ${checked.updated}, пропустить: ${checked.skipped}.`;
+          results.replaceChildren(h("p", {}, "Автосопоставление колонок:"), ...Object.entries(preview.mapping).map(([index, field]) => h("p", {}, `${preview.headers[Number(index)]} → ${preview.fields[field]?.label || field}`)), ...(checked.errors || []).map((error) => h("p", { class: "error" }, `Строка ${error.row}: ${error.detail}`)));
+          const applyTable = h("button", { class: "btn solid", type: "button", onclick: async () => {
+            applyTable.disabled = true;
+            try {
+              const saved = await api("/import/apply", { method: "POST", body: { id: preview.id, mapping: preview.mapping } });
+              toast(`Таблица: создано ${saved.created}, обновлено ${saved.updated}, пропущено ${saved.skipped}`);
+              if (saved.skipped) { progress.textContent = `Таблица: пропущено ${saved.skipped} строк. Исправьте ошибки и повторите импорт.`; results.replaceChildren(...(saved.errors || []).map((error) => h("p", {}, `Строка ${error.row}: ${error.detail}`))); actions.replaceChildren(h("button", { class: "btn quiet", onclick: close }, "Закрыть")); await reload(); return; }
+              await showPhotos();
+            } catch (error) { progress.textContent = error.message; applyTable.disabled = false; }
+          } }, "Подтвердить импорт таблицы");
+          actions.append(applyTable, h("button", { class: "btn quiet", onclick: close }, "Отмена"));
+        } catch (error) { progress.textContent = error.message; actions.replaceChildren(h("button", { class: "btn quiet", onclick: close }, "Закрыть")); }
       });
-      toolbar.append(button("Загрузить папку фото", () => folderInput.click(), "btn quiet"), folderInput);
+      toolbar.append(button("Импорт папки товаров и фото", () => folderInput.click(), "btn quiet"), folderInput);
       const filterRow = h("div", { class: "store-product-filters" });
       const search = h("input", { type: "search", class: "store-product-search-input", value: productQuery, placeholder: "Поиск по названию, бренду или артикулу", autocomplete: "off" });
       const categoryFilter = h("select", {}, h("option", { value: "" }, "Все категории"), ...data.categories.map((category) => h("option", { value: String(category.id), selected: String(category.id) === productCategoryId }, category.name)));

@@ -9,22 +9,18 @@
   };
 
   const parsePriceMinor = (raw) => {
-    const source = String(raw || "").trim();
-    // Do not calculate a reservation total from ranges or multi-price labels.
-    // Examples: "24 000 / 17 700 ₽", "от 1 200 ₽", "1 200–1 500 ₽".
-    if (!source || /\b(?:от|до)\b|[\/;|]|\d\s*[–—-]\s*\d/i.test(source)) return null;
-    let value = source.replace(/[^\d,.\-]/g, "").trim();
-    if (!value || !/\d/.test(value)) return null;
-    const comma = value.lastIndexOf(",");
-    const dot = value.lastIndexOf(".");
-    const decimalAt = Math.max(comma, dot);
-    if (decimalAt >= 0 && value.length - decimalAt - 1 <= 2) {
-      value = `${value.slice(0, decimalAt).replace(/[,.]/g, "")}.${value.slice(decimalAt + 1)}`;
-    } else {
-      value = value.replace(/[,.]/g, "");
-    }
-    const amount = Number(value);
-    return Number.isFinite(amount) && amount > 0 ? Math.round(amount * 100) : null;
+    const text = String(raw ?? "").replace(/[\u00a0\u202f]/g, " ").trim();
+    if (!text || /(?:^|\s)(?:от|до)(?:\s|$)|[\/;|]|\d\s*[–—-]\s*\d/i.test(text)) return null;
+    const tokens = [...text.matchAll(/(?<!\d)(?:\d{1,3}(?:[ \u00a0\u202f.,]\d{3})+|\d+)(?:[.,]\d{1,2})?(?!\d)/g)];
+    if (tokens.length !== 1) return null;
+    let token = tokens[0][0].replace(/\s/g, "");
+    const decimal = token.match(/[.,](\d{1,2})$/);
+    const fraction = decimal ? Number(decimal[1].padEnd(2, "0")) : 0;
+    if (decimal) token = token.slice(0, -decimal[0].length);
+    const digits = token.replace(/[.,]/g, "");
+    if (!/^\d+$/.test(digits)) return null;
+    const result = Number(digits) * 100 + fraction;
+    return Number.isSafeInteger(result) && result > 0 && result <= 9_000_000_000_000 ? result : null;
   };
 
   function setMainImage(gallery, url, alt) {
@@ -63,6 +59,23 @@
     image.src = safeUrl;
   }
 
+  function setGallery(gallery, images) {
+    let parsed = [];
+    try { parsed = JSON.parse(images || "[]"); } catch { /* leave empty */ }
+    gallery._variantImages = Array.isArray(parsed) ? parsed.filter((item) => item && item.url) : [];
+    gallery._variantIndex = 0;
+    renderGallery(gallery);
+  }
+  function renderGallery(gallery) {
+    const images = gallery._variantImages || [];
+    const item = images[gallery._variantIndex || 0];
+    setMainImage(gallery, item?.url || "", item?.alt || "");
+    const controls = gallery.querySelector("[data-gallery-controls]");
+    const counter = gallery.querySelector("[data-gallery-counter]");
+    if (controls) controls.hidden = images.length < 2;
+    if (counter) counter.textContent = images.length ? `${(gallery._variantIndex || 0) + 1} / ${images.length}` : "";
+  }
+
   function selectVariant(button) {
     const detail = button.closest(".seo-product-detail");
     if (!detail) return;
@@ -77,7 +90,8 @@
     if (gallery) {
       const variantImage = button.dataset.imageUrl || gallery.dataset.defaultImage || "";
       const variantAlt = button.dataset.imageAlt || gallery.dataset.defaultAlt || "Изображение товара";
-      setMainImage(gallery, variantImage, variantAlt);
+      if (button.dataset.galleryImages) setGallery(gallery, button.dataset.galleryImages);
+      else setMainImage(gallery, variantImage, variantAlt);
     }
 
     const information = detail.querySelector(".seo-product-information");
@@ -94,12 +108,22 @@
       if (stock) { stock.textContent = availability; stock.hidden = !availability; }
     }
     const stockState = information?.querySelector("[data-product-stock-state]");
-    if (stockState && button.dataset.availability) stockState.textContent = button.dataset.availability;
+    if (stockState) {
+      stockState.textContent = button.dataset.availability || "Наличие уточняется";
+      stockState.className = `seo-stock-state seo-stock-${button.dataset.stockStatus || "unknown"}`;
+    }
+    const description = information?.querySelector("[data-product-description]");
+    if (description) description.textContent = button.dataset.description || "";
 
     const reservation = document.querySelector(`form[data-store-reservation][data-product-id="${button.dataset.productId || ""}"]`);
     if (reservation) {
+      const selectedInput = reservation.querySelector("[data-selected-variant-id]");
+      if (selectedInput) selectedInput.value = variantId;
+      const submit = reservation.querySelector('[type="submit"]');
+      if (submit) submit.disabled = button.dataset.stockStatus === "out_of_stock";
       const unitPrice = parsePriceMinor(button.dataset.price);
-      const currency = String(reservation.dataset.priceCurrency || "RUB").toUpperCase();
+      const currency = String(button.dataset.currency || reservation.dataset.priceCurrency || "RUB").toUpperCase();
+      reservation.dataset.priceCurrency = currency;
       reservation.dataset.unitPriceMinor = unitPrice === null ? "" : String(unitPrice);
       const summary = reservation.querySelector("[data-reservation-price-summary]");
       const unit = reservation.querySelector("[data-reservation-unit-price]");
@@ -110,10 +134,19 @@
       if (total) total.textContent = unitPrice === null ? "Будет подтверждена менеджером" : formatMoney(unitPrice * quantity, currency);
       summary?.classList.toggle("is-calculated", unitPrice !== null);
       summary?.classList.toggle("is-pending", unitPrice === null);
+      const note = reservation.querySelector("[data-reservation-price-note]");
+      if (note) note.textContent = unitPrice === null ? "Сумму подтвердит менеджер." : "Предварительный расчёт. Итог подтвердит менеджер.";
     }
   }
 
   document.addEventListener("click", (event) => {
+    const navigation = event.target.closest("[data-gallery-prev], [data-gallery-next]");
+    if (navigation) {
+      const gallery = navigation.closest("[data-product-media]");
+      const count = gallery?._variantImages?.length || 0;
+      if (count) { gallery._variantIndex = ((gallery._variantIndex || 0) + (navigation.hasAttribute("data-gallery-next") ? 1 : -1) + count) % count; renderGallery(gallery); }
+      return;
+    }
     const option = event.target.closest("[data-product-variant]");
     if (option) {
       selectVariant(option);
@@ -122,12 +155,6 @@
   });
 
   document.querySelectorAll("[data-product-media]").forEach((gallery) => {
-    const image = gallery.querySelector("[data-product-main-image]");
-    if (image && image.getAttribute("src")) {
-      image.addEventListener("error", () => {
-        image.hidden = true;
-        gallery.querySelector("[data-product-gallery-placeholder]")?.removeAttribute("hidden");
-      }, { once: true });
-    }
+    setGallery(gallery, gallery.dataset.galleryImages);
   });
 })();

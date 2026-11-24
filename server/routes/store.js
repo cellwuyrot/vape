@@ -70,7 +70,7 @@ const normalizeStoreVariant = (body = {}, existing = null, productId = 0) => {
     for (const key of Object.keys(attributes)) if (/цвет|color|colour|оттенок|shade/i.test(key)) delete attributes[key];
     if (String(body.color || "").trim()) attributes.color = String(body.color).trim().slice(0, 120);
   }
-  const name = String(body.name ?? existing?.name ?? "").trim().slice(0, 180);
+  const name = String(body.name || existing?.name || body.color || "").trim().slice(0, 180);
   if (!name) throw new HttpError(400, "Укажите название варианта или цвет");
   const sku = String(body.sku ?? existing?.sku ?? "").trim().slice(0, 100);
   const sortOrder = Number(body.sort_order ?? existing?.sort_order ?? 0);
@@ -78,6 +78,8 @@ const normalizeStoreVariant = (body = {}, existing = null, productId = 0) => {
   return {
     product_id: Number(productId || existing?.product_id), name, sku,
     attributes_json: JSON.stringify(attributes),
+    description: String(body.description ?? existing?.description ?? "").trim().slice(0, 5000),
+    availability_status: body.availability_status === undefined ? (existing?.availability_status || "") : (["", "in_stock", "out_of_stock", "preorder", "unknown"].includes(body.availability_status) ? body.availability_status : (() => { throw new HttpError(400, "Неизвестный статус наличия варианта"); })()),
     price_raw: String(body.price_raw ?? existing?.price_raw ?? "").trim().slice(0, 80),
     old_price_raw: String(body.old_price_raw ?? existing?.old_price_raw ?? "").trim().slice(0, 80),
     currency: String(body.currency ?? existing?.currency ?? "RUB").trim().toUpperCase().slice(0, 3) || "RUB",
@@ -157,6 +159,7 @@ get("/api/store/public", async () => {
   const productIds = products.map((p) => p.id);
   const images = productIds.length ? await db.all(`SELECT id,product_id,variant_id,url_original,alt_raw,position,source_url,download_status FROM store_product_images WHERE product_id IN (${productIds.map(() => "?").join(",")}) ORDER BY position,id`, productIds) : [];
   const relations = productIds.length ? await db.all(`SELECT product_id,category_id FROM store_product_categories WHERE product_id IN (${productIds.map(() => "?").join(",")})`, productIds) : [];
+  const variants = productIds.length ? await db.all(`SELECT id,product_id,name,sku,attributes_json,price_raw,old_price_raw,currency,availability_label_raw,availability_status,description,sort_order FROM store_product_variants WHERE product_id IN (${productIds.map(() => "?").join(",")}) ORDER BY sort_order,id`, productIds) : [];
   return { data: {
     categories: categories.map((category) => ({
       ...category,
@@ -169,7 +172,7 @@ get("/api/store/public", async () => {
         image_url: category.public_featured_product_image,
       } : null,
     })),
-    products: products.map((p) => ({ ...p, specifications: json(p.specifications_json), images: images.filter((i) => i.product_id === p.id), category_ids: relations.filter((r) => r.product_id === p.id).map((r) => r.category_id) })),
+    products: products.map((p) => ({ ...p, specifications: json(p.specifications_json), images: images.filter((i) => i.product_id === p.id), variants: variants.filter((v) => v.product_id === p.id).map((v) => ({ ...v, attributes: json(v.attributes_json, {}), images: images.filter((i) => Number(i.variant_id) === Number(v.id)) })), category_ids: relations.filter((r) => r.product_id === p.id).map((r) => r.category_id) })),
     news, pages,
     settings: Object.fromEntries(settings.map((s) => [s.setting_key, s.setting_value])),
   } };
@@ -500,7 +503,8 @@ post("/api/store/products", async ({ body, user }) => {
 }, { auth: true });
 
 put("/api/store/products/:id", async ({ params, body, user, req }) => {
-  adminOnly(user); const row = await repo.byId("store_products", params.id); if (!row) throw new HttpError(404, "Товар не найден");
+  adminOnly(user);
+  if (body.variants !== undefined) throw new HttpError(400, "Варианты сохраняются отдельно через /products/:id/variants"); const row = await repo.byId("store_products", params.id); if (!row) throw new HttpError(404, "Товар не найден");
   const data = await repo.update("store_products", row.id, {
     name: body.name ?? row.name, slug: body.slug ?? row.slug, brand: body.brand ?? row.brand, sku: body.sku ?? row.sku,
     product_type: body.product_type ?? row.product_type, format: body.format ?? row.format, description: body.description ?? row.description,
@@ -523,6 +527,16 @@ put("/api/store/products/:id", async ({ params, body, user, req }) => {
   if (body.availability_status === "in_stock" && row.availability_status !== "in_stock") restock = await notifyRestockSubscribers(data);
   await audit(user.id, "update", "store_product", row.id, { name:data.name, status:data.status, availability_status:data.availability_status, restock, seo_updated: ["seo_h1","seo_title","seo_description","seo_keywords","canonical_url","robots_index"].some((key) => body[key] !== undefined) }, req.socket.remoteAddress || "");
   return { data: { ...data, restock_notifications: restock } };
+}, { auth: true });
+
+get("/api/store/products/:id", async ({ params, user }) => {
+  adminOnly(user);
+  const p = await repo.byId("store_products", params.id);
+  if (!p) throw new HttpError(404, "Товар не найден");
+  const images = await db.all("SELECT * FROM store_product_images WHERE product_id=? ORDER BY position,id", [p.id]);
+  const variants = await db.all("SELECT * FROM store_product_variants WHERE product_id=? ORDER BY sort_order,id", [p.id]);
+  const relations = await db.all("SELECT category_id FROM store_product_categories WHERE product_id=?", [p.id]);
+  return { data: { ...p, specifications: json(p.specifications_json), images, category_ids: relations.map((r) => r.category_id), variants: variants.map((v) => ({ ...v, attributes: json(v.attributes_json, {}), images: images.filter((i) => Number(i.variant_id) === Number(v.id)) })) } };
 }, { auth: true });
 
 post("/api/store/products/:id/variants", async ({ params, body, user, req }) => {
@@ -855,13 +869,13 @@ post("/api/store/products/:id/images/upload", async ({ params, req, user }) => {
   const extension = path.extname(filename).toLowerCase();
   const imageType = IMAGE_TYPES[extension];
   if (!imageType || !imageType.valid(raw)) throw new HttpError(415, "Поддерживаются корректные JPG, PNG и WebP изображения");
+  const variantId = await checkedVariantId(product.id, req.headers["x-variant-id"]);
   const storedName = `${crypto.randomBytes(12).toString("hex")}${extension}`;
   const relativeDir = path.join("uploads", "catalog");
-  const absoluteDir = path.join(PUBLIC_DIR, relativeDir);
+  const absoluteDir = path.join(config.storage.localDir, "catalog");
   await fs.mkdir(absoluteDir, { recursive: true });
   await fs.writeFile(path.join(absoluteDir, storedName), raw, { flag: "wx" });
   const url = `/${relativeDir.replace(/\\/g, "/")}/${storedName}`;
-  const variantId = await checkedVariantId(product.id, req.headers["x-variant-id"]);
   const position = variantId
     ? await db.get("SELECT COALESCE(MAX(position),-1)+1 AS position FROM store_product_images WHERE product_id=? AND variant_id=?", [product.id, variantId])
     : await db.get("SELECT COALESCE(MAX(position),-1)+1 AS position FROM store_product_images WHERE product_id=? AND variant_id IS NULL", [product.id]);
@@ -965,10 +979,15 @@ post("/api/store/images/import", async ({ req, user }) => {
     for (const variant of matches) if (!variantMatches.some((item) => Number(item.id) === Number(variant.id))) variantMatches.push(variant);
   }
   if (variantMatches.length > 1) return { data: { status: "ambiguous_variant", filename, product_id: product.id, product_name: product.name, candidates: variantMatches.map((variant) => ({ id: variant.id, name: variant.name, sku: variant.sku })) } };
+  if (matchedByFolder && productFolderIndex > 0 && !variantMatches.length) return { data: { status: "unmatched_variant", filename, relative_path: relativePath, product_id: product.id, detail: "Папка варианта не совпала с существующим вариантом; фото не загружено" } };
   const variant = variantMatches[0] || null;
+  const hash = crypto.createHash("sha256").update(raw).digest("hex");
+  const duplicate = await db.get("SELECT id,url_original FROM store_product_images WHERE product_id=? AND COALESCE(variant_id,0)=? AND content_sha256=? LIMIT 1", [product.id, variant?.id || 0, hash]);
+  if (duplicate) return { data: { status: "duplicate", filename, relative_path: relativePath, product_id: product.id, product_name: product.name, variant_id: variant?.id || null, variant_name: variant?.name || null, image_id: duplicate.id } };
+  if (req.headers["x-import-preview"] === "1") return { data: { status: "matched", filename, relative_path: relativePath, product_id: product.id, product_name: product.name, variant_id: variant?.id || null, variant_name: variant?.name || null } };
   const storedName = `${crypto.randomBytes(12).toString("hex")}${extension}`;
   const relativeDir = path.join("uploads", "catalog");
-  const absoluteDir = path.join(PUBLIC_DIR, relativeDir);
+  const absoluteDir = path.join(config.storage.localDir, "catalog");
   await fs.mkdir(absoluteDir, { recursive: true });
   await fs.writeFile(path.join(absoluteDir, storedName), raw, { flag: "wx" });
   const publicUrl = `/${relativeDir.replace(/\\/g, "/")}/${storedName}`;
@@ -978,7 +997,7 @@ post("/api/store/images/import", async ({ req, user }) => {
   const image = await repo.insert("store_product_images", {
     product_id: product.id, variant_id: variant?.id || null,
     url_original: publicUrl, alt_raw: variant ? `${product.name} — ${variant.name}` : product.name,
-    position: Number(positionRow?.position || 0), source_url: "", download_status: "local",
+    position: Number(positionRow?.position || 0), source_url: "", download_status: "local", original_filename: filename, original_path: relativePath, content_sha256: hash,
   });
   await audit(user.id, "store_image_import", "store_product", product.id, { filename, url: publicUrl, variant_id: variant?.id || null }, clientIp(req));
   return { status: 201, data: { status: "matched", filename, relative_path: relativePath, matched_by: variant ? "variant-folder-or-name" : matchedByFolder ? "folder" : "filename", product_id: product.id, product_name: product.name, variant_id: variant?.id || null, variant_name: variant?.name || null, image_id: image.id, url: publicUrl } };

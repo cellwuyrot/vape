@@ -78,9 +78,9 @@
     updatePriceSummary(form);
     form.addEventListener("reset", () => {
       window.setTimeout(() => {
-        const selected = document.querySelector("[data-product-variant-id][aria-pressed='true']");
+        const selected = document.querySelector(`[data-product-variant][data-product-id="${form.dataset.productId}"][aria-pressed='true']`);
         const variantInput = form.querySelector("[data-selected-variant-id]");
-        if (selected && variantInput) variantInput.value = selected.dataset.productVariantId;
+        if (selected && variantInput) variantInput.value = selected.dataset.variantId;
         updatePriceSummary(form);
       }, 0);
     });
@@ -125,6 +125,6 @@
       window.VAPELABAnalytics?.track("reservation_submitted", { target_text: "Бронирование товара", target_path: location.pathname });
     } catch (error) {
       if (feedback) feedback.textContent = error.message;
-    } finally { if (submit) submit.disabled = false; }
+    } finally { if (submit) { const selected = document.querySelector(`[data-product-variant][data-product-id="${form.dataset.productId}"][aria-pressed="true"]`); submit.disabled = selected?.dataset.stockStatus === "out_of_stock"; } }
   });
 })();

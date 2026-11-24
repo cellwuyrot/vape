@@ -701,19 +701,19 @@ test("цветовые варианты показываются текстов�
   const slug = `test-color-variants-${suffix}`;
   const created = await call("/api/store/products", { method: "POST", token: adminToken, body: {
     name: "Тестовая модель с цветами", slug, brand: "Test", product_type: "Тестовое устройство",
-    price_raw: "2 500 ₽", status: "published", is_reservable: true, robots_index: false,
+    price_raw: "2 500 ₽", status: "published", is_reservable: true, robots_index: true,
   } });
   assert.equal(created.status, 201);
   const productId = Number(created.data.id);
   const blueImage = await db.run("INSERT INTO store_product_images(product_id,url_original,alt_raw,position,source_url,download_status) VALUES(?,?,?,?,?,?)", [productId, "https://images.example.test/blue.jpg", "Тестовая модель — Синий", 0, "https://images.example.test/source", "unverified"]);
   const greenImage = await db.run("INSERT INTO store_product_images(product_id,url_original,alt_raw,position,source_url,download_status) VALUES(?,?,?,?,?,?)", [productId, "https://images.example.test/green.jpg", "Тестовая модель — Зелёный", 1, "https://images.example.test/source", "unverified"]);
-  const updated = await call(`/api/store/products/${productId}`, { method: "PUT", token: adminToken, body: {
-    variants: [
-      { name: "Синий", sku: `TEST-BLUE-${suffix}`, image_id: blueImage.lastId, price_raw: "2 500 ₽", attributes: { color: "Синий" } },
-      { name: "Зелёный", sku: `TEST-GREEN-${suffix}`, image_id: greenImage.lastId, price_raw: "2 700 ₽", attributes: { color: "Зелёный" } },
-    ],
-  } });
-  assert.equal(updated.status, 200);
+  const unsupported = await call(`/api/store/products/${productId}`, { method: "PUT", token: adminToken, body: { variants: [] } });
+  assert.equal(unsupported.status, 400);
+  const blue = await call(`/api/store/products/${productId}/variants`, { method: "POST", token: adminToken, body: { name: "Синий", color: "Синий", sku: `TEST-BLUE-${suffix}`, price_raw: "2 500 ₽" } });
+  const green = await call(`/api/store/products/${productId}/variants`, { method: "POST", token: adminToken, body: { name: "Зелёный", color: "Зелёный", sku: `TEST-GREEN-${suffix}`, price_raw: "2 700 ₽" } });
+  assert.equal(blue.status, 201); assert.equal(green.status, 201);
+  assert.equal((await call(`/api/store/products/${productId}/images/${blueImage.lastId}`, { method: "PUT", token: adminToken, body: { variant_id: blue.data.id } })).status, 200);
+  assert.equal((await call(`/api/store/products/${productId}/images/${greenImage.lastId}`, { method: "PUT", token: adminToken, body: { variant_id: green.data.id } })).status, 200);
   const variants = await db.all("SELECT * FROM store_product_variants WHERE product_id=? ORDER BY sort_order,id", [productId]);
   assert.equal(variants.length, 2);
   const images = await db.all("SELECT id,variant_id,url_original FROM store_product_images WHERE product_id=? ORDER BY id", [productId]);
@@ -727,10 +727,10 @@ test("цветовые варианты показываются текстов�
   const page = await fetch(`${base}/product/${slug}`);
   assert.equal(page.status, 200);
   const html = await page.text();
-  assert.match(html, /data-product-variant-id=/);
-  assert.match(html, />Синий<\/button>/);
-  assert.match(html, />Зелёный<\/button>/);
-  assert.match(html, /data-variant-images=/);
+  assert.match(html, /data-variant-id=/);
+  assert.match(html, />Синий<\/span>/);
+  assert.match(html, />Зелёный<\/span>/);
+  assert.match(html, /data-gallery-images=/);
   assert.doesNotMatch(html, /<h2>Варианты<\/h2>/);
 
   const reservation = await call("/api/store/reservations", { method: "POST", body: {

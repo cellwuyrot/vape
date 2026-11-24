@@ -6,7 +6,7 @@ test("parses one clearly stated product price in common Russian formats", () => 
   assert.equal(parseMoneyMinor("2 000 ₽"), 200000);
   assert.equal(parseMoneyMinor("1 299,50 руб."), 129950);
   assert.equal(parseMoneyMinor("2.500 руб."), 250000);
-  assert.equal(parseMoneyMinor("от 2 000 ₽"), 200000);
+  assert.equal(parseMoneyMinor("от 2 000 ₽"), null);
 });
 
 test("does not guess between a range or multiple variant prices", () => {

@@ -439,3 +439,8 @@
   .store-product-variant-summary-price,.store-product-variant-summary-actions { grid-column:2; }
   .store-product-variants-summary-head { align-items:flex-start; }
 }
+
+.variant-gallery-controls { display:flex; align-items:center; justify-content:center; gap:1rem; padding:.75rem; }
+.variant-gallery-controls[hidden] { display:none; }
+.variant-gallery-controls button { cursor:pointer; min-width:44px; min-height:44px; border:1px solid #aaa; border-radius:8px; background:transparent; color:inherit; }
+.seo-product-long-description { white-space:pre-line; }

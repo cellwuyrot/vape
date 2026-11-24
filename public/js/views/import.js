@@ -19,7 +19,7 @@ export function openImport(onDone) {
 /* ---------- Шаг 1: файл ---------- */
 
 function step1(host, onDone, close) {
-  const entity = h("select", {}, ...Object.entries(ENTITIES).map(([k, v]) => h("option", { value: k }, v)));
+  const entity = h("select", {}, ...Object.entries(ENTITIES).map(([k, v]) => h("option", { value: k, selected: k === "products" }, v)));
   const file = h("input", { type: "file", accept: ".csv,.xlsx,.txt" });
   const status = h("div", { style: { fontSize: "12.5px", color: "var(--ink-4)" } });
 
@@ -27,6 +27,7 @@ function step1(host, onDone, close) {
     h("div", {},
       h("p", { style: { fontSize: "13.5px", color: "var(--ink-3)", marginTop: 0 } },
         "Поддерживаются .xlsx и .csv. Первая строка файла — заголовки. Для товаров доступны ручное сопоставление любых исходных колонок, категории, характеристики, изображения, цена, наличие, SEO, 18+ и бронирование. После загрузки обязательно проверьте сопоставление и выполните пробный прогон."),
+      h("p", {}, h("a", { href: "/catalog-import-template.csv", download: "catalog-import-template.csv" }, "Скачать шаблон товаров CSV")),
       field("Что импортируем", entity),
       field("Файл", file),
       status,

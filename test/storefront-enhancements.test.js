@@ -403,9 +403,10 @@ test("рекомендации отбирают опубликованные т�
 test("папочный импорт сопоставляет фотографию по точному slug и проверяет формат файла", async () => {
   const filename = "test-pagination-product-01.png";
   const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lS8AAAAASUVORK5CYII=", "base64");
+  const uniquePng = Buffer.concat([png, Buffer.from("slug-photo")]);
   const response = await request("/api/store/images/import", {
     method: "POST",
-    raw: png,
+    raw: uniquePng,
     headers: { "Content-Type": "image/png", "X-File-Name": encodeURIComponent(filename) },
   });
   assert.equal(response.status, 201);
@@ -419,8 +420,9 @@ test("папочный импорт сопоставляет фотографи�
 
 test("папочный импорт сопоставляет изображение по имени каталога товара", async () => {
   const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lS8AAAAASUVORK5CYII=", "base64");
+  const uniquePng = Buffer.concat([png, Buffer.from("folder-photo")]);
   const response = await request("/api/store/images/import", {
-    method: "POST", raw: png, headers: {
+    method: "POST", raw: uniquePng, headers: {
       "Content-Type": "image/png",
       "X-File-Name": encodeURIComponent("01-main.png"),
       "X-File-Path": encodeURIComponent("images/test-pagination-product-01/01-main.png"),

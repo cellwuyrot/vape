@@ -80,8 +80,8 @@ export function parseXlsx(buffer) {
   const files = unzip(buffer);
 
   const sharedRaw = files.get("xl/sharedStrings.xml")?.toString("utf8") || "";
-  const shared = [...sharedRaw.matchAll(/<si>([\s\S]*?)<\/si>/g)].map((match) =>
-    unescapeXml([...match[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((t) => t[1]).join(""))
+  const shared = [...sharedRaw.matchAll(/<(?:[\w.-]+:)?si(?:\s[^>]*)?>([\s\S]*?)<\/(?:[\w.-]+:)?si>/g)].map((match) =>
+    unescapeXml([...match[1].matchAll(/<(?:[\w.-]+:)?t(?:\s[^>]*)?>([\s\S]*?)<\/(?:[\w.-]+:)?t>/g)].map((t) => t[1]).join(""))
   );
 
   const sheetName =
@@ -92,21 +92,21 @@ export function parseXlsx(buffer) {
   const sheet = files.get(sheetName).toString("utf8");
   const rows = [];
 
-  for (const rowMatch of sheet.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)) {
+  for (const rowMatch of sheet.matchAll(/<(?:[\w.-]+:)?row\b[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?row>/g)) {
     const cells = [];
-    for (const cellMatch of rowMatch[1].matchAll(/<c([^>]*)>([\s\S]*?)<\/c>/g)) {
+    for (const cellMatch of rowMatch[1].matchAll(/<(?:[\w.-]+:)?c\b([^>]*?)(?:\/\s*>|>([\s\S]*?)<\/(?:[\w.-]+:)?c\s*>)/g)) {
       const attrs = cellMatch[1];
-      const inner = cellMatch[2];
+      const inner = cellMatch[2] || "";
       const index = columnIndex(/r="([A-Z]+\d+)"/.exec(attrs)?.[1] || "A1");
       const type = /t="([^"]+)"/.exec(attrs)?.[1] || "n";
 
       let value = "";
       if (type === "s") {
-        value = shared[Number(/<v>([\s\S]*?)<\/v>/.exec(inner)?.[1] || 0)] ?? "";
+        value = shared[Number(/<(?:[\w.-]+:)?v>([\s\S]*?)<\/(?:[\w.-]+:)?v>/.exec(inner)?.[1] || 0)] ?? "";
       } else if (type === "inlineStr") {
-        value = unescapeXml([...inner.matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((t) => t[1]).join(""));
+        value = unescapeXml([...inner.matchAll(/<(?:[\w.-]+:)?t(?:\s[^>]*)?>([\s\S]*?)<\/(?:[\w.-]+:)?t>/g)].map((t) => t[1]).join(""));
       } else {
-        value = unescapeXml(/<v>([\s\S]*?)<\/v>/.exec(inner)?.[1] || "");
+        value = unescapeXml(/<(?:[\w.-]+:)?v>([\s\S]*?)<\/(?:[\w.-]+:)?v>/.exec(inner)?.[1] || "");
       }
       cells[index] = String(value).trim();
     }
@@ -250,6 +250,8 @@ export const ENTITY_FIELDS = {
       image_search_query: { label: "Поисковый запрос изображения" },
       variant_name: { label: "Название варианта" },
       variant_sku: { label: "Артикул варианта" },
+      variant_description: { label: "Описание варианта" },
+      variant_availability_status: { label: "Статус наличия варианта" },
       variant_price_raw: { label: "Цена варианта (исходная строка)" },
       variant_old_price_raw: { label: "Старая цена варианта" },
       variant_availability_label_raw: { label: "Наличие варианта (как в источнике)" },
@@ -330,6 +332,8 @@ const SYNONYMS = {
     image_search_query: ["поисковый запрос изображения", "image search query"],
     variant_name: ["название варианта", "вариант", "модификация товара", "variant name", "variant"],
     variant_sku: ["артикул варианта", "sku варианта", "variant sku"],
+    variant_description: ["описание варианта", "variant description"],
+    variant_availability_status: ["статус наличия варианта", "variant availability status"],
     variant_price_raw: ["цена варианта", "variant price"],
     variant_old_price_raw: ["старая цена варианта", "variant old price"],
     variant_availability_label_raw: ["наличие варианта", "variant availability"],
@@ -484,26 +488,45 @@ export async function applyImport({ entity, rows, mapping, headers, userId, file
   const inferredColumnCount = Array.isArray(headers) ? headers.length : Math.max(0, ...rows.map((row) => row.length));
   const pairs = validateImportMapping(entity, mapping, inferredColumnCount);
 
-  const stats = { total: rows.length, created: 0, updated: 0, skipped: 0, errors: [] };
-
-  for (const [rowIndex, row] of rows.entries()) {
-    const record = {};
-    for (const [index, field] of pairs) record[field] = String(row[index] ?? "").trim();
-
-    try {
-      const result = entity === "contacts"
-        ? await upsertContact(record, dryRun)
-        : entity === "companies"
-          ? await upsertCompany(record, dryRun)
-          : entity === "deals"
-            ? await upsertDeal(record, userId, dryRun)
-            : await upsertStoreProduct(record, dryRun);
-      stats[result] += 1;
-    } catch (err) {
-      stats.skipped += 1;
-      if (stats.errors.length < 20) stats.errors.push({ row: rowIndex + 2, detail: err.message });
+  const processRows = async (productDb = null, productRepo = null) => {
+    const resultStats = { total: rows.length, created: 0, updated: 0, skipped: 0, errors: [] };
+    for (const [rowIndex, row] of rows.entries()) {
+      const record = {};
+      for (const [index, field] of pairs) record[field] = String(row[index] ?? "").trim();
+      if (productDb) await productDb.exec("SAVEPOINT import_row");
+      try {
+        const result = entity === "contacts" ? await upsertContact(record, dryRun)
+          : entity === "companies" ? await upsertCompany(record, dryRun)
+            : entity === "deals" ? await upsertDeal(record, userId, dryRun)
+              : await upsertStoreProduct(record, false, productDb, productRepo);
+        if (productDb) await productDb.exec("RELEASE SAVEPOINT import_row");
+        resultStats[result] += 1;
+      } catch (err) {
+        if (productDb) { await productDb.exec("ROLLBACK TO SAVEPOINT import_row"); await productDb.exec("RELEASE SAVEPOINT import_row"); }
+        resultStats.skipped += 1;
+        if (resultStats.errors.length < 20) resultStats.errors.push({ row: rowIndex + 2, detail: err.message });
+      }
     }
-  }
+    return resultStats;
+  };
+  let stats;
+  if (entity === "products") {
+    // A real transactional dry run models previous rows, then rolls back everything.
+    let previewStats;
+    const rollbackPreview = new Error("ROLLBACK_IMPORT_PREVIEW");
+    try {
+      stats = await db.transaction(async (tx) => {
+        const scopedRepo = {
+          async byId(table, id) { return tx.get(`SELECT * FROM ${table} WHERE id=?`, [id]); },
+          async insert(table, data) { const keys = Object.keys(data); const result = await tx.run(`INSERT INTO ${table} (${keys.join(", ")}) VALUES (${keys.map(() => "?").join(", ")})`, keys.map((key) => data[key])); return this.byId(table, result.lastId); },
+          async update(table, id, data) { const keys = Object.keys(data); await tx.run(`UPDATE ${table} SET ${keys.map((key) => `${key} = ?`).join(", ")} WHERE id = ?`, [...keys.map((key) => data[key]), id]); return this.byId(table, id); },
+        };
+        const result = await processRows(tx, scopedRepo);
+        if (dryRun) { previewStats = result; throw rollbackPreview; }
+        return result;
+      });
+    } catch (error) { if (error !== rollbackPreview) throw error; stats = previewStats; }
+  } else stats = await processRows();
 
   if (!dryRun) {
     await repo.insert("import_runs", {
@@ -522,19 +545,19 @@ export async function applyImport({ entity, rows, mapping, headers, userId, file
   return stats;
 }
 
-async function findStoreCategory(name, parentId = null, dryRun = false) {
+async function findStoreCategory(name, parentId = null, dryRun = false, database = db, repository = repo) {
   const label = String(name || "").trim();
   if (!label) return null;
   const where = parentId === null ? "name = ? AND parent_id IS NULL" : "name = ? AND parent_id = ?";
   const params = parentId === null ? [label] : [label, parentId];
-  const found = await db.get(`SELECT id FROM store_categories WHERE ${where} LIMIT 1`, params);
+  const found = await database.get(`SELECT id FROM store_categories WHERE ${where} LIMIT 1`, params);
   if (found) return found.id;
   if (dryRun) return null;
   const slugBase = label.toLowerCase().replace(/ё/g,"e").replace(/[^a-z0-9а-я]+/gi,"-").replace(/^-|-$/g,"") || `category-${Date.now()}`;
   let slug = slugBase;
   let suffix = 2;
-  while (await db.get("SELECT id FROM store_categories WHERE slug=?", [slug])) { slug = slugBase + "-" + String(suffix); suffix += 1; }
-  const created = await repo.insert("store_categories", { name:label, slug, parent_id:parentId, sort_order:999, description:"", source_url:"" });
+  while (await database.get("SELECT id FROM store_categories WHERE slug=?", [slug])) { slug = slugBase + "-" + String(suffix); suffix += 1; }
+  const created = await repository.insert("store_categories", { name:label, slug, parent_id:parentId, sort_order:999, description:"", source_url:"" });
   return created.id;
 }
 
@@ -546,7 +569,7 @@ function parseImportBoolean(value, fallback, label) {
   throw new Error(`поле «${label}» должно содержать 1/0, да/нет или true/false`);
 }
 
-async function upsertStoreProduct(record, dryRun) {
+async function upsertStoreProduct(record, dryRun, database = db, repository = repo) {
   const name = String(record.name || "").trim();
   if (!name) throw new Error("не указано название товара");
   const slugBase = name.toLowerCase().replace(/ё/g,"e").replace(/[^a-z0-9а-я]+/gi,"-").replace(/^-|-$/g,"") || `product-${Date.now()}`;
@@ -555,11 +578,13 @@ async function upsertStoreProduct(record, dryRun) {
   // with another brand/format remain separate products.
   let existing = null;
   if (record.sku) {
-    existing = await db.get("SELECT * FROM store_products WHERE sku=? LIMIT 1", [record.sku]);
+    const matches = await database.all("SELECT * FROM store_products WHERE sku=?", [record.sku]);
+    if (matches.length > 1) throw new Error("Найдено несколько товаров с этим SKU; устраните дубли перед импортом");
+    existing = matches[0] || null;
   } else if (record.source_url) {
-    existing = await db.get("SELECT * FROM store_products WHERE source_url=? AND lower(name)=lower(?) LIMIT 1", [record.source_url, name]);
+    existing = await database.get("SELECT * FROM store_products WHERE source_url=? AND lower(name)=lower(?) LIMIT 1", [record.source_url, name]);
   } else {
-    const sameName = await db.all("SELECT * FROM store_products WHERE lower(name)=lower(?) ORDER BY id", [name]);
+    const sameName = await database.all("SELECT * FROM store_products WHERE lower(name)=lower(?) ORDER BY id", [name]);
     const same = (value) => String(value || "").trim().toLocaleLowerCase("ru-RU");
     existing = sameName.find((item) =>
       same(item.brand) === same(record.brand) &&
@@ -570,12 +595,15 @@ async function upsertStoreProduct(record, dryRun) {
   let productSlug = existing?.slug || slugBase;
   if (!existing) {
     let suffix = 2;
-    while (await db.get("SELECT id FROM store_products WHERE slug=? LIMIT 1", [productSlug])) {
+    while (await database.get("SELECT id FROM store_products WHERE slug=? LIMIT 1", [productSlug])) {
       productSlug = slugBase + "-" + String(suffix++);
     }
   }
   const keywordArray = String(record.seo_keywords || "").split(/[;,\n]/).map((v)=>v.trim()).filter(Boolean).slice(0,40);
-  const status = ["draft","pending_review","published","archived"].includes(String(record.status || "").trim()) ? String(record.status).trim() : "draft";
+  const statusValue = String(record.status || "").trim();
+  if (statusValue && !["draft", "pending_review", "published", "archived"].includes(statusValue)) throw new Error("неизвестный статус публикации");
+  const status = statusValue || existing?.status || "draft";
+  if (record.variant_availability_status && !["in_stock", "out_of_stock", "preorder", "unknown"].includes(record.variant_availability_status)) throw new Error("неизвестный статус наличия варианта");
 
   // Проверяем все поля, которые могут завершиться ошибкой, до любых изменений БД.
   // Иначе невалидный JSON варианта мог оставить товар уже созданным, хотя строка
@@ -605,11 +633,11 @@ async function upsertStoreProduct(record, dryRun) {
   // частотности не должна оставлять побочные записи от неуспешного импорта.
   const categories = [];
   if (record.category_name) {
-    const parentId = await findStoreCategory(record.category_name, null, dryRun);
+    const parentId = await findStoreCategory(record.category_name, null, dryRun, database, repository);
     if (parentId) {
       categories.push(parentId);
       if (record.subcategory_name) {
-        const childId = await findStoreCategory(record.subcategory_name, parentId, dryRun);
+        const childId = await findStoreCategory(record.subcategory_name, parentId, dryRun, database, repository);
         if (childId) categories.push(childId);
       }
     }
@@ -650,32 +678,37 @@ async function upsertStoreProduct(record, dryRun) {
   };
   if (dryRun) return existing ? "updated" : "created";
   let product;
-  if (existing) product = await repo.update("store_products", existing.id, fields);
-  else product = await repo.insert("store_products", fields);
+  if (existing) product = await repository.update("store_products", existing.id, fields);
+  else product = await repository.insert("store_products", fields);
   if (categories.length) {
-    await db.run("DELETE FROM store_product_categories WHERE product_id=?", [product.id]);
-    for (const categoryId of categories) await db.run("INSERT INTO store_product_categories(product_id,category_id) VALUES(?,?) ON CONFLICT(product_id,category_id) DO NOTHING", [product.id, categoryId]);
+    await database.run("DELETE FROM store_product_categories WHERE product_id=?", [product.id]);
+    for (const categoryId of categories) await database.run("INSERT INTO store_product_categories(product_id,category_id) VALUES(?,?) ON CONFLICT(product_id,category_id) DO NOTHING", [product.id, categoryId]);
   }
   let savedVariant = null;
   if (variantName || record.variant_sku) {
     const existingVariant = record.variant_sku
-      ? await db.get("SELECT * FROM store_product_variants WHERE product_id=? AND sku=? LIMIT 1", [product.id, record.variant_sku])
-      : await db.get("SELECT * FROM store_product_variants WHERE product_id=? AND name=? LIMIT 1", [product.id, variantName]);
+      ? await database.get("SELECT * FROM store_product_variants WHERE product_id=? AND sku=? LIMIT 1", [product.id, record.variant_sku])
+      : await database.get("SELECT * FROM store_product_variants WHERE product_id=? AND name=? LIMIT 1", [product.id, variantName]);
+    const savedAttributes = JSON.parse(existingVariant?.attributes_json || "{}");
+    if (record.color) for (const key of Object.keys(savedAttributes)) if (/цвет|color|colour|оттенок|shade/i.test(key)) delete savedAttributes[key];
     const variantFields = {
-      product_id:product.id, name:variantName || String(record.variant_sku), sku:record.variant_sku || existingVariant?.sku || "",
-      attributes_json:JSON.stringify(variantAttributes), price_raw:record.variant_price_raw || existingVariant?.price_raw || "",
+      product_id:product.id, name:variantName || existingVariant?.name || String(record.variant_sku), sku:record.variant_sku || existingVariant?.sku || "",
+      attributes_json:JSON.stringify({ ...savedAttributes, ...variantAttributes }),
+      description:record.variant_description || existingVariant?.description || "",
+      availability_status:record.variant_availability_status || existingVariant?.availability_status || "",
+      price_raw:record.variant_price_raw || existingVariant?.price_raw || "",
       old_price_raw:record.variant_old_price_raw || existingVariant?.old_price_raw || "", currency:record.currency || existingVariant?.currency || "RUB",
       availability_label_raw:record.variant_availability_label_raw || existingVariant?.availability_label_raw || "", sort_order:existingVariant?.sort_order || 0,
     };
     savedVariant = existingVariant
-      ? await repo.update("store_product_variants", existingVariant.id, variantFields)
-      : await repo.insert("store_product_variants", variantFields);
+      ? await repository.update("store_product_variants", existingVariant.id, variantFields)
+      : await repository.insert("store_product_variants", variantFields);
   }
   if (record.image_url && (/^https?:\/\//i.test(record.image_url) || /^\/uploads\/catalog\/[a-z0-9_-]+\.(?:jpe?g|png|webp)$/i.test(record.image_url))) {
     const duplicate = savedVariant
-      ? await db.get("SELECT id FROM store_product_images WHERE product_id=? AND variant_id=? AND url_original=? LIMIT 1", [product.id, savedVariant.id, record.image_url])
-      : await db.get("SELECT id FROM store_product_images WHERE product_id=? AND variant_id IS NULL AND url_original=? LIMIT 1", [product.id, record.image_url]);
-    if (!duplicate) await repo.insert("store_product_images", {
+      ? await database.get("SELECT id FROM store_product_images WHERE product_id=? AND variant_id=? AND url_original=? LIMIT 1", [product.id, savedVariant.id, record.image_url])
+      : await database.get("SELECT id FROM store_product_images WHERE product_id=? AND variant_id IS NULL AND url_original=? LIMIT 1", [product.id, record.image_url]);
+    if (!duplicate) await repository.insert("store_product_images", {
       product_id:product.id, variant_id:savedVariant?.id || null, url_original:record.image_url,
       alt_raw:record.image_alt || (savedVariant ? `${name} — ${savedVariant.name}` : name), position:0,
       source_url:record.image_source_url || "", download_status:"unverified",
@@ -691,18 +724,17 @@ async function upsertStoreProduct(record, dryRun) {
   if (keywordArray.length && !dryRun) {
     for (const keyword of keywordArray) {
       const normalizeSearchText = (value) => String(value || "").normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("ru-RU");
-      const existingTargets = await db.all("SELECT * FROM store_keyword_targets WHERE product_id=?", [product.id]);
+      const existingTargets = await database.all("SELECT * FROM store_keyword_targets WHERE product_id=?", [product.id]);
       const duplicate = existingTargets.find((item) =>
         normalizeSearchText(item.keyword) === normalizeSearchText(keyword) &&
         normalizeSearchText(item.search_engine) === normalizeSearchText(searchEngine) &&
         normalizeSearchText(item.region) === normalizeSearchText(searchRegion)
       );
       const keywordFields = { product_id:product.id, keyword, frequency_class:normalizedClass, search_volume:volume, search_engine:searchEngine, region:searchRegion, search_intent:searchIntent, source:searchSource, checked_at:searchCheckedAt, updated_at:nowIso() };
-      if (duplicate) await repo.update("store_keyword_targets", duplicate.id, keywordFields);
-      else await repo.insert("store_keyword_targets", keywordFields);
+      if (duplicate) await repository.update("store_keyword_targets", duplicate.id, keywordFields);
+      else await repository.insert("store_keyword_targets", keywordFields);
     }
   }
-  await logActivity({ type:"import", title:`Товар импортирован: ${name}` }).catch(()=>{});
   return existing ? "updated" : "created";
 }
 

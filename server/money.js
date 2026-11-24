@@ -3,7 +3,7 @@ const PRICE_TOKEN = /(?<!\d)(?:\d{1,3}(?:[ \u00a0\u202f.,]\d{3})+|\d+)(?:[.,]\d{
 
 export function parseMoneyMinor(value) {
   const text = String(value ?? "").replace(/[\u00a0\u202f]/g, " ").trim();
-  if (!text) return null;
+  if (!text || /(?:^|\s)(?:от|до)(?:\s|$)|[\/;|]|\d\s*[–—-]\s*\d/i.test(text)) return null;
   const tokens = [...text.matchAll(PRICE_TOKEN)];
   // Ranges, several variant prices and mixed price labels are ambiguous.
   if (tokens.length !== 1) return null;

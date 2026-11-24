@@ -36,7 +36,7 @@ test("модальное управление вариантами исполь�
 
 test("при открытии редактора варианты и изображения повторно синхронизируются с сервером", () => {
   assert.match(admin, /Always reload the product snapshot/);
-  assert.ok(admin.includes("const response = await api(`/store/admin?page=1&page_size=100&q=${query}`)"));
+  assert.ok(admin.includes("const response = await api(`/store/products/${p.id}`)"));
   assert.match(admin, /onSaved\?\.\(\)/);
   assert.match(admin, /onSaved: syncProductSummary/);
 });

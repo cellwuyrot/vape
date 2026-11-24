@@ -58,6 +58,7 @@ const MIME = {
   ".css": "text/css; charset=utf-8",
   ".svg": "image/svg+xml",
   ".json": "application/json; charset=utf-8",
+  ".csv": "text/csv; charset=utf-8",
   ".woff2": "font/woff2",
   ".png": "image/png",
   ".webp": "image/webp",
@@ -190,14 +191,21 @@ function serveStatic(req, res, pathname) {
   if (decoded.includes("\\") || decoded.includes("\0") || decoded.split("/").some((part) => part === ".." || part.startsWith("."))) {
     return sendHtmlNotFound(req, res);
   }
-  const file = path.resolve(PUBLIC_DIR, `.${decoded}`);
-  const relative = path.relative(PUBLIC_DIR, file);
+  // Catalog files created after migration are persistent and included in local backups.
+  // Keep old public/uploads files readable until the operator copies them.
+  const catalogMatch = /^\/uploads\/catalog\/([a-z0-9_-]+\.(?:jpe?g|png|webp))$/i.exec(decoded);
+  const persistentRoot = path.resolve(config.storage.localDir, "catalog");
+  const persistentFile = catalogMatch ? path.join(persistentRoot, catalogMatch[1]) : "";
+  const usePersistent = Boolean(persistentFile && fs.existsSync(persistentFile));
+  const baseDir = usePersistent ? persistentRoot : PUBLIC_DIR;
+  const file = usePersistent ? persistentFile : path.resolve(PUBLIC_DIR, `.${decoded}`);
+  const relative = path.relative(baseDir, file);
   if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return sendHtmlNotFound(req, res);
 
   let target;
   try {
     target = fs.realpathSync(file);
-    const realRelative = path.relative(fs.realpathSync(PUBLIC_DIR), target);
+    const realRelative = path.relative(fs.realpathSync(baseDir), target);
     if (!realRelative || realRelative.startsWith("..") || path.isAbsolute(realRelative)) return sendHtmlNotFound(req, res);
     if (!fs.statSync(target).isFile()) return sendHtmlNotFound(req, res);
   } catch { return sendHtmlNotFound(req, res); }
