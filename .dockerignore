@@ -1,0 +1,11 @@
+node_modules
+data
+data-test
+.env
+.git
+.github
+docs/preview.html
+test
+tools
+backups
+*.tar.gz

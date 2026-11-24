@@ -1,0 +1,22 @@
+services:
+  mailserver:
+    image: ghcr.io/docker-mailserver/docker-mailserver:17.0.0
+    container_name: mailserver
+    hostname: mail.example.com
+    env_file: mailserver.env
+    ports:
+      - "25:25"     # SMTP: server-to-server delivery
+      - "465:465"   # SMTP submission: implicit TLS
+      - "587:587"   # SMTP submission: STARTTLS
+      - "993:993"   # IMAP: implicit TLS
+    volumes:
+      - ./docker-data/dms/mail-data:/var/mail
+      - ./docker-data/dms/mail-state:/var/mail-state
+      - ./docker-data/dms/mail-logs:/var/log/mail
+      - ./docker-data/dms/config:/tmp/docker-mailserver
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /etc/localtime:/etc/localtime:ro
+    cap_add:
+      - NET_ADMIN
+    restart: unless-stopped
+    stop_grace_period: 1m

@@ -1,0 +1,29 @@
+{
+  "name": "vapelab-storefront-react",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5173",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4173",
+    "originkit:login": "npx originkit@latest login",
+    "originkit:hero58": "npx originkit@latest add hero-58",
+    "inspect:originkit": "node scripts/inspect-originkit.mjs"
+  },
+  "dependencies": {
+    "@tailwindcss/postcss": "^4.3.5",
+    "postcss": "^8.5.33",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "rucrm": "file:..",
+    "tailwindcss": "^4.3.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "6.3.0",
+    "vite": "8.3.8"
+  }
+}

@@ -1,0 +1,122 @@
+# Прогон на каждый коммит: линтер, тесты на обеих СУБД, сборка образа.
+# Внешних действий из маркетплейса минимум — только официальные, чтобы
+# сборка не зависела от чужих репозиториев.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Линтер
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Проверить, что зависимостей нет
+        run: |
+          npm install --omit=dev
+          test ! -d node_modules -o -z "$(ls -A node_modules 2>/dev/null)" \
+            || (echo "Появились внешние зависимости — это нарушает обещание установки без npm-реестра" && exit 1)
+      - run: npm run lint
+
+  test-sqlite:
+    name: Тесты на SQLite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm test
+      - name: Проверить цикл резервного копирования целиком
+        run: |
+          npm run seed
+          BACKUP_ENABLED=true npm run backup
+          npm run restore-check
+
+  test-postgres:
+    name: Тесты на PostgreSQL
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: rucrm
+          POSTGRES_PASSWORD: rucrm
+          POSTGRES_DB: rucrm
+          POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rucrm"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://rucrm:rucrm@localhost:5432/rucrm?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Накатить миграции на чистую базу
+        run: npm run migrate
+      - name: Повторный накат должен быть пустым
+        run: npm run migrate
+      - run: npm test
+
+  # Матрица версий: node:22 в образе, но разработчики нередко сидят на свежей
+  compatibility:
+    name: Совместимость с Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22", "24"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm test
+
+  docker:
+    name: Сборка образа
+    runs-on: ubuntu-latest
+    needs: [lint, test-sqlite]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Собрать образ
+        run: docker build -t rucrm:${{ github.sha }} .
+      - name: Проверить, что контейнер поднимается и готов
+        run: |
+          docker run -d --name rucrm-check \
+            -e SECRET_KEY=ci-secret-key-достаточной-длины \
+            -e ADMIN_EMAIL=admin@vaplab.ru \
+            -e MAIL_FROM=info@vaplab.ru \
+            -e SMTP_URL=https://mail.example.invalid/send \
+            -e NODE_ENV=production \
+            -p 3000:3000 rucrm:${{ github.sha }}
+          for i in $(seq 1 30); do
+            if curl -fs http://localhost:3000/api/ready > /dev/null; then
+              echo "Сервис готов"
+              curl -s http://localhost:3000/api/ready | head -c 500
+              docker rm -f rucrm-check
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Сервис не вышел в готовность"
+          docker logs rucrm-check
+          docker rm -f rucrm-check
+          exit 1

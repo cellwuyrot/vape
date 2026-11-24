@@ -1,0 +1,49 @@
+# Запуск RuCRM как системного сервиса.
+#
+#   sudo useradd -r -s /usr/sbin/nologin rucrm
+#   sudo mkdir -p /opt/rucrm /var/lib/rucrm && sudo chown -R rucrm: /opt/rucrm /var/lib/rucrm
+#   sudo cp deploy/rucrm.service /etc/systemd/system/
+#   sudo systemctl enable --now rucrm
+[Unit]
+Description=RuCRM — CRM с российским контуром
+Documentation=https://github.com/example/rucrm
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rucrm
+Group=rucrm
+WorkingDirectory=/opt/rucrm
+EnvironmentFile=/opt/rucrm/.env
+Environment=NODE_ENV=production
+Environment=LOG_FORMAT=json
+Environment=DATA_DIR=/var/lib/rucrm
+
+# Схема накатывается отдельным шагом до старта: так падение миграции
+# не превращается в цикл перезапусков уже принимающего трафик процесса
+ExecStartPre=/usr/bin/node scripts/migrate.js
+ExecStart=/usr/bin/node server/index.js
+
+# Приложение само обрабатывает SIGTERM: уводит себя из ротации и дописывает ответы
+KillSignal=SIGTERM
+TimeoutStopSec=30
+Restart=always
+RestartSec=5
+
+# Ограничение прав: сервису нужен только свой каталог данных
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/rucrm
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rucrm
+
+[Install]
+WantedBy=multi-user.target

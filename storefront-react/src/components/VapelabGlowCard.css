@@ -1,0 +1,35 @@
+.vapelab-glow-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  height: 100%;
+  --vapelab-glow-opacity: 0;
+}
+
+.vapelab-glow-card::before {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  pointer-events: none;
+  opacity: var(--vapelab-glow-opacity);
+  background: radial-gradient(
+    300px circle at var(--vapelab-glow-x, 50%) var(--vapelab-glow-y, 50%),
+    var(--vapelab-glow-color, rgba(36, 107, 222, .18)),
+    transparent 72%
+  );
+  transition: opacity 180ms ease;
+}
+
+.vapelab-glow-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.vapelab-glow-card:focus-within::before {
+  opacity: .65;
+}
+
+@media (hover: none), (pointer: coarse), (prefers-reduced-motion: reduce) {
+  .vapelab-glow-card::before { display: none; }
+}

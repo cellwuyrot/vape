@@ -1,0 +1,14 @@
+[Unit]
+Description=Снятие резервной копии RuCRM с проверкой восстановления
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=rucrm
+WorkingDirectory=/opt/rucrm
+EnvironmentFile=/opt/rucrm/.env
+ExecStart=/usr/bin/node scripts/backup.js
+# Ненулевой код возврата означает, что копия не снята или не прошла проверку —
+# повесьте на это оповещение в мониторинге
+StandardOutput=journal
+StandardError=journal

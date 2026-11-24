@@ -1,0 +1,31 @@
+{
+  "name": "rucrm",
+  "version": "2.2.0",
+  "description": "CRM VAPELAB: клиенты, заказы, поставки и единый почтовый ящик info@vapelab.bond",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "seed": "node server/seed.js",
+    "migrate": "node scripts/migrate.js",
+    "backup": "node scripts/backup.js",
+    "restore-check": "node scripts/restore-check.js",
+    "lint": "node tools/lint.js",
+    "test": "node --test --test-concurrency=1 test/*.test.js",
+    "check": "npm run lint && npm test",
+    "setup:storefront": "npm --prefix storefront-react install && npm --prefix storefront-react run build",
+    "build:storefront": "npm --prefix storefront-react run build",
+    "dev:storefront": "npm --prefix storefront-react run dev",
+    "reset": "node -e \"import('node:fs').then(fs=>{fs.rmSync('data',{recursive:true,force:true});console.log('База очищена')})\""
+  },
+  "dependencies": {
+    "imapflow": "2.12.2",
+    "mailparser": "3.15.0"
+  },
+  "keywords": ["crm", "152-fz", "telegram", "whatsapp", "omnichannel", "postgresql", "s3", "tasks", "import", "amocrm", "bitrix24"],
+  "license": "UNLICENSED"
+}

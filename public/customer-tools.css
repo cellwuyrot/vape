@@ -1,0 +1,107 @@
+/* Shared customer search and site-to-CRM chat. */
+.vapelab-header-search { position:relative; z-index:70; display:block; flex:0 1 290px; min-width:180px; margin-left:auto; }
+.vapelab-search-form { display:flex; align-items:center; gap:8px; width:100%; height:42px; padding:0 8px 0 12px; border:1px solid #dfe5eb; border-radius:9px; background:#fff; box-shadow:0 2px 8px rgba(12,24,38,.035); }
+.vapelab-search-icon { color:#718092; font-size:21px; line-height:1; }
+.vapelab-search-input { flex:1; min-width:0; height:100%; padding:0; border:0; outline:0; background:transparent; color:#111820; font:500 12px/1.4 Inter,Arial,sans-serif; }
+.vapelab-search-input::placeholder { color:#8a949f; }
+.vapelab-search-form button { flex:none; min-height:28px; padding:0 10px; border:0; border-radius:6px; background:#10151c; color:#fff; cursor:pointer; font:600 10px Inter,Arial,sans-serif; }
+.vapelab-search-form:focus-within { border-color:#17bfc4; box-shadow:0 0 0 3px rgba(23,213,201,.12); }
+.vapelab-search-results { position:absolute; top:calc(100% + 9px); left:0; z-index:100; width:min(560px,calc(100vw - 28px)); max-height:min(70vh,560px); overflow:auto; padding:8px; border:1px solid #dce4ec; border-radius:13px; background:#fff; color:#111820; box-shadow:0 20px 60px rgba(8,19,33,.2); }
+.vapelab-search-results[hidden] { display:none; }
+.vapelab-search-summary { padding:7px 9px 10px; color:#7b8793; font-size:11px; }
+.vapelab-search-message { margin:0; padding:15px 10px; color:#697583; font-size:12px; }
+.vapelab-search-result { display:flex; align-items:center; gap:11px; min-width:0; padding:9px; border-radius:9px; color:#101820; text-decoration:none; }
+.vapelab-search-result:hover,.vapelab-search-result:focus-visible { outline:0; background:#f0f7f8; }
+.vapelab-search-result img,.vapelab-search-result-placeholder { display:grid; width:48px; height:48px; flex:none; place-items:center; border-radius:8px; background:#f1f4f6; object-fit:contain; color:#16343a; font:700 13px Unbounded,Inter,sans-serif; }
+.vapelab-search-result-copy { display:grid; min-width:0; flex:1; gap:4px; }
+.vapelab-search-result-copy strong { overflow:hidden; color:#121820; font-size:12px; line-height:1.4; text-overflow:ellipsis; }
+.vapelab-search-result-copy small { overflow:hidden; color:#7a8591; font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
+.vapelab-search-result-price { flex:none; color:#087f82; font-size:11px; font-weight:700; }
+.vapelab-chat-root { position:relative; z-index:9900; }
+.vapelab-chat-launch { position:fixed; right:22px; bottom:22px; z-index:9900; display:flex; align-items:center; gap:10px; min-height:54px; padding:0 18px; border:1px solid #17d5c9; border-radius:999px; background:#071016; color:#f5fbfc; box-shadow:0 12px 38px rgba(0,0,0,.25),0 0 22px rgba(23,213,201,.12); cursor:pointer; font:650 12px Inter,Arial,sans-serif; transition:transform .2s,background .2s,box-shadow .2s; }
+.vapelab-chat-launch:hover { transform:translateY(-2px); background:#0b2025; box-shadow:0 15px 42px rgba(0,0,0,.28),0 0 26px rgba(23,213,201,.18); }
+.vapelab-chat-launch-icon { display:grid; width:28px; height:28px; place-items:center; border-radius:50%; background:#17d5c9; color:#061116; font-size:15px; }
+.vapelab-chat-panel { position:fixed; right:22px; bottom:88px; z-index:9901; display:flex; width:min(390px,calc(100vw - 28px)); height:min(570px,calc(100dvh - 118px)); min-height:340px; flex-direction:column; overflow:hidden; border:1px solid rgba(23,213,201,.3); border-radius:17px; background:#0d141b; color:#f4f7fa; box-shadow:0 25px 80px rgba(0,0,0,.38); }
+.vapelab-chat-panel[hidden] { display:none; }
+.vapelab-chat-head { display:flex; flex:none; align-items:center; justify-content:space-between; min-height:66px; padding:12px 16px; border-bottom:1px solid rgba(255,255,255,.09); background:#111b23; }
+.vapelab-chat-head>div { display:grid; gap:4px; }
+.vapelab-chat-head strong { font:700 12px Unbounded,Inter,sans-serif; letter-spacing:.08em; }
+.vapelab-chat-head small { color:#9caab6; font-size:10px; }
+.vapelab-chat-close { width:32px; height:32px; border:1px solid rgba(255,255,255,.15); border-radius:50%; background:transparent; color:#dbe4eb; cursor:pointer; font-size:22px; line-height:1; }
+.vapelab-chat-messages { display:flex; flex:1; flex-direction:column; gap:11px; overflow:auto; padding:16px; background:radial-gradient(ellipse at 90% 0,rgba(23,213,201,.07),transparent 44%),#0d141b; }
+.vapelab-chat-welcome { max-width:90%; margin:0; padding:12px 13px; border:1px solid rgba(255,255,255,.09); border-radius:12px 12px 12px 3px; background:#18232d; color:#cbd6de; font-size:12px; line-height:1.6; }
+.vapelab-chat-message { display:flex; max-width:90%; flex-direction:column; gap:4px; align-self:flex-start; }
+.vapelab-chat-message.outbound { align-self:flex-end; }
+.vapelab-chat-bubble { padding:10px 12px; border:1px solid rgba(255,255,255,.08); border-radius:12px 12px 12px 3px; background:#18232d; color:#edf3f6; font-size:12px; line-height:1.55; overflow-wrap:anywhere; white-space:pre-wrap; }
+.vapelab-chat-message.outbound .vapelab-chat-bubble { border-color:rgba(23,213,201,.18); border-radius:12px 12px 3px 12px; background:#103039; }
+.vapelab-chat-message>small { padding:0 4px; color:#748493; font-size:9px; }
+.vapelab-chat-message.outbound>small { text-align:right; }
+.vapelab-chat-form { display:grid; flex:none; gap:10px; padding:12px; border-top:1px solid rgba(255,255,255,.09); background:#111b23; }
+.vapelab-chat-first-contact { display:grid; gap:8px; }
+.vapelab-chat-first-contact[hidden] { display:none; }
+.vapelab-chat-first-contact label { display:grid; min-width:0; gap:5px; color:#aebbc6; font-size:10px; }
+.vapelab-chat-first-contact input:not([type=checkbox]) { width:100%; min-width:0; height:33px; padding:0 9px; border:1px solid #33424d; border-radius:7px; outline:0; background:#0b131a; color:#f3f7fa; font:11px Inter,Arial,sans-serif; }
+.vapelab-chat-contact-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.vapelab-chat-consent { display:flex!important; align-items:flex-start; gap:7px!important; line-height:1.45; }
+.vapelab-chat-consent input { margin:1px 0 0; accent-color:#17d5c9; }
+.vapelab-chat-consent a { color:#66d7d1; text-decoration:underline; }
+.vapelab-chat-message-label textarea { display:block; width:100%; max-height:110px; min-height:47px; resize:vertical; padding:10px 11px; border:1px solid #34434d; border-radius:9px; outline:0; background:#0a1218; color:#f3f7fa; font:12px/1.5 Inter,Arial,sans-serif; }
+.vapelab-chat-message-label textarea:focus,.vapelab-chat-first-contact input:focus { border-color:#17bdb5; }
+.vapelab-chat-form-bottom { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.vapelab-chat-status { min-width:0; color:#9eafb9; font-size:10px; line-height:1.4; }
+.vapelab-chat-form-bottom button { flex:none; min-height:38px; padding:0 16px; border:0; border-radius:8px; background:#17d5c9; color:#031116; cursor:pointer; font:700 11px Inter,Arial,sans-serif; }
+.vapelab-chat-form-bottom button:disabled { cursor:wait; opacity:.6; }
+.vapelab-chat-panel a:focus-visible,.vapelab-chat-panel button:focus-visible,.vapelab-chat-launch:focus-visible { outline:2px solid #65e8e2; outline-offset:3px; }
+.sr-only { position:absolute!important; width:1px!important; height:1px!important; padding:0!important; margin:-1px!important; overflow:hidden!important; clip:rect(0,0,0,0)!important; white-space:nowrap!important; border:0!important; }
+@media(max-width:1050px) { .vapelab-header-search { flex-basis:230px; } }
+@media(max-width:820px) {
+  .header-inner { position:relative; flex-wrap:wrap; }
+  .vapelab-header-search { order:5; flex:1 0 100%; width:100%; min-width:0; margin:0 0 12px; }
+  .vapelab-search-results { width:100%; }
+  .vapelab-chat-launch { right:14px; bottom:14px; min-height:48px; padding:0 14px; }
+  .vapelab-chat-panel { right:10px; bottom:72px; width:min(390px,calc(100vw - 20px)); height:min(570px,calc(100dvh - 90px)); }
+}
+@media(max-width:420px) {
+  .vapelab-chat-launch { width:50px; justify-content:center; padding:0; }
+  .vapelab-chat-launch>span:last-child { display:none; }
+  .vapelab-chat-panel { min-height:320px; }
+}
+@media(prefers-reduced-motion:reduce) { .vapelab-chat-launch,.vapelab-search-form button { transition:none; } }
+
+/* Full public search results page. */
+.seo-search-page { min-height: 58vh; }
+.vapelab-search-page-summary { margin: 0 0 18px; color: var(--ink-3, #78828e); font-size: 13px; }
+.vapelab-search-page-results { align-items: stretch; }
+.vapelab-search-page-card { display: flex; min-width: 0; flex-direction: column; overflow: hidden; border: 1px solid var(--line, #e4e7eb); border-radius: 12px; background: var(--surface, #fff); color: var(--ink, #101820); text-decoration: none; transition: border-color .18s, transform .18s, box-shadow .18s; }
+.vapelab-search-page-card:hover { transform: translateY(-2px); border-color: #17bfc4; box-shadow: 0 12px 32px rgba(0,0,0,.08); }
+.vapelab-search-page-card>img,.vapelab-search-page-placeholder { display: grid; width: 100%; aspect-ratio: 1.2/1; place-items: center; background: #f2f4f6; object-fit: contain; color: #12202b; font: 700 28px Unbounded,Inter,sans-serif; }
+.vapelab-search-page-card-copy { display: grid; gap: 8px; padding: 14px; }
+.vapelab-search-page-card-copy strong { font-size: 14px; line-height: 1.5; }
+.vapelab-search-page-card-copy small { color: var(--ink-3, #798491); font-size: 11px; line-height: 1.45; }
+.vapelab-search-page-card-copy b { color: #087f82; font-size: 13px; }
+.vapelab-search-page-card-copy em { justify-self: start; padding: 3px 7px; border-radius: 4px; background: #fff1df; color: #9b4c10; font-size: 10px; font-style: normal; font-weight: 700; }
+.vapelab-search-page-empty { grid-column: 1/-1; padding: 22px; border: 1px dashed var(--line, #e4e7eb); border-radius: 12px; color: var(--ink-3, #78828e); }
+.vapelab-search-page-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 7px; margin-top: 28px; }
+.vapelab-search-page-page { display: inline-flex; min-width: 38px; min-height: 38px; align-items: center; justify-content: center; padding: 0 12px; border: 1px solid var(--line, #dfe4e8); border-radius: 8px; color: var(--ink, #111820); text-decoration: none; font-size: 12px; }
+.vapelab-search-page-page:hover,.vapelab-search-page-page.is-current { border-color: #17bfc4; background: #eafafa; color: #075d60; }
+.vapelab-search-page-gap { padding: 0 3px; color: var(--ink-3, #78828e); }
+@media(max-width:680px) { .vapelab-search-page-card-copy { padding: 10px; } .vapelab-search-page-card-copy strong { font-size: 12px; } }
+
+@media(min-width:821px) and (max-width:1180px) {
+  .header-inner { gap:12px; }
+  .brand { min-width:0; }
+  .main-nav { gap:clamp(9px,1.15vw,14px); }
+  .main-nav a { font-size:12px; }
+  .vapelab-header-search { flex-basis:190px; min-width:165px; margin-left:0; }
+  .vapelab-search-form { height:39px; gap:6px; padding-left:9px; }
+  .vapelab-search-form button { display:none; }
+  .vapelab-search-input { font-size:11px; }
+  .login-link { min-height:40px; padding-inline:12px; font-size:12px; }
+}
+@media(min-width:821px) and (max-width:950px) {
+  .brand-copy small { display:none; }
+  .main-nav { gap:8px; }
+  .main-nav a { font-size:11px; }
+  .vapelab-header-search { flex-basis:165px; min-width:145px; }
+  .login-link { padding-inline:9px; font-size:11px; }
+}

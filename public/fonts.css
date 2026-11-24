@@ -1,0 +1,9 @@
+/* Typography tokens. Font files are not embedded in this project.
+   Unbounded and Inter are loaded through the Google Fonts stylesheet in each HTML entry point.
+   If the network is unavailable, the UI falls back to system sans-serif. */
+:root {
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-heading: "Unbounded", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+html, body, button, input, textarea, select { font-family: var(--font-body); }
+.display, h1, h2, h3, h4, .brand-copy strong, .hero-wordmark { font-family: var(--font-heading); }

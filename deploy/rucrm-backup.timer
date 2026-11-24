@@ -1,0 +1,16 @@
+# Альтернатива встроенному планировщику для классического сервера с systemd.
+# Если используете этот таймер — выключите BACKUP_ENABLED в окружении сервиса,
+# иначе копии будут сниматься дважды.
+#
+#   sudo cp deploy/rucrm-backup.* /etc/systemd/system/
+#   sudo systemctl enable --now rucrm-backup.timer
+[Unit]
+Description=Резервное копирование RuCRM по расписанию
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target

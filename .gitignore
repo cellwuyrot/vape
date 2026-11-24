@@ -1,0 +1,48 @@
+# Конфиденциальные данные
+.env*
+**/.env*
+
+# Базы данных и runtime
+data/
+**/data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.dump
+
+# Изображения и пользовательские загрузки
+uploads/
+**/uploads/
+public/uploads/
+
+# Резервные копии
+backups/
+**/backups/
+*.bak
+*.bak.*
+*.backup
+*.backup.*
+*.log
+
+# Зависимости и сборки
+node_modules/
+**/node_modules/
+.next/
+**/.next/
+dist/
+build/
+coverage/
+
+# Секреты и сертификаты
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Временные файлы
+tmp/
+temp/
+.DS_Store
+mail-server/mailserver.env
+mail-server/docker-data/

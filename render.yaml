@@ -1,0 +1,53 @@
+# Развёртывание в один клик: Render читает этот файл из репозитория.
+# Для российской юрисдикции используйте аналог — Timeweb Cloud Apps, VK Cloud,
+# Yandex Serverless Containers. Ключевое: healthCheckPath смотрит на /api/ready,
+# а не на /api/health, — балансировщик не должен слать трафик до наката миграций.
+services:
+  - type: web
+    name: rucrm
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/ready
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: MAIL_FROM
+        value: info@vaplab.ru
+      - key: SMTP_URL
+        sync: false
+      - key: YANDEX_SEARCH_API_KEY
+        sync: false
+      - key: YANDEX_SEARCH_FOLDER_ID
+        sync: false
+      - key: DATA_DIR
+        value: /data
+      - key: PUBLIC_URL
+        sync: false
+      - key: LOG_FORMAT
+        value: json
+      # Пусто — SQLite на диске ниже. Для боевой нагрузки укажите postgres://…
+      - key: DATABASE_URL
+        sync: false
+      # Резервные копии внутри процесса: внешнего cron в Render нет
+      - key: BACKUP_ENABLED
+        value: "true"
+      - key: BACKUP_INTERVAL_HOURS
+        value: "24"
+      - key: BACKUP_UPLOAD_S3
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+    disk:
+      name: rucrm-data
+      mountPath: /data
+      sizeGB: 1
