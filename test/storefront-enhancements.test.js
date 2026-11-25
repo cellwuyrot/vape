@@ -343,6 +343,33 @@ test("бронирование товара создаёт запись, при�
   assert.equal(ambiguous.data.price.total_price_minor, null);
 });
 
+test("индексация noindex не блокирует бронирование опубликованного товара", async () => {
+  const product = await repo.insert("store_products", {
+    name: "Товар без индексации для бронирования",
+    slug: "reservable-noindex-test",
+    status: "published",
+    robots_index: 0,
+    is_reservable: 1,
+    availability_status: "in_stock",
+    price_raw: "1 000 ₽",
+    currency: "RUB",
+  });
+  const response = await request("/api/store/reservations", {
+    method: "POST",
+    token: "",
+    body: {
+      product_id: product.id,
+      customer_name: "Тестовый покупатель",
+      phone: "+79990000000",
+      quantity: 1,
+      pd_consent: true,
+      source_path: "/product/reservable-noindex-test",
+    },
+  });
+  assert.equal(response.status, 201);
+  assert.match(response.data.number, /^VPL-/);
+});
+
 test("аналитика принимает анонимные события и показывает уникальных посетителей администратору", async () => {
   const visitorId = "visitor_test_000001";
   const sessionId = "session_test_000001";

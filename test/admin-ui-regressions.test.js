@@ -19,8 +19,9 @@ test("настройки показывают журнал супер-админ
 
 test("после успешного бронирования покупателю показывается временное подтверждение", async () => {
   const source = await read("public/store-reservations.js");
-  assert.match(source, /title\.textContent = "Заявка принята"/);
-  assert.match(source, /Ожидайте обратной связи от менеджера VAPELAB/);
+  assert.match(source, /title\.textContent = "Бронирование подтверждено"/);
+  assert.match(source, /Ожидайте связи менеджера VAPELAB/);
+  assert.match(source, /Бронирование подтверждено\. Номер бронирования:/);
   assert.match(source, /window\.setTimeout\(\(\) => \{/);
   assert.match(source, /\}, 5500\)/);
 });
