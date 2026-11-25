@@ -589,7 +589,7 @@ post("/api/store/products/bulk", async ({ body, user, req }) => {
   if (!ids.length) throw new HttpError(400, "Выберите хотя бы один товар");
   if (ids.length > 100) throw new HttpError(400, "За одну операцию можно обработать не более 100 товаров");
   const action = String(body.action || "");
-  if (!["publish", "draft", "archive", "delete", "in_stock", "out_of_stock", "preorder", "unknown"].includes(action)) throw new HttpError(400, "Неизвестная массовая операция");
+  if (!["publish", "draft", "archive", "delete", "in_stock", "out_of_stock", "preorder", "unknown", "enable_reservations"].includes(action)) throw new HttpError(400, "Неизвестная массовая операция");
   if (action === "delete") siteAdminOnly(user);
   const found = await db.all(`SELECT * FROM store_products WHERE id IN (${ids.map(() => "?").join(",")})`, ids);
   if (found.length !== ids.length) throw new HttpError(404, "Часть выбранных товаров не найдена. Обновите список и повторите операцию");
@@ -606,6 +606,8 @@ post("/api/store/products/bulk", async ({ body, user, req }) => {
         await tx.run("DELETE FROM store_products WHERE id=?", [product.id]);
       } else if (["publish", "draft", "archive"].includes(action)) {
         await tx.run("UPDATE store_products SET status=?,updated_at=? WHERE id=?", [{ publish: "published", draft: "draft", archive: "archived" }[action], nowIso(), product.id]);
+      } else if (action === "enable_reservations") {
+        await tx.run("UPDATE store_products SET is_reservable=1,updated_at=? WHERE id=?", [nowIso(), product.id]);
       } else {
         await tx.run("UPDATE store_products SET availability_status=?,updated_at=? WHERE id=?", [action, nowIso(), product.id]);
       }
