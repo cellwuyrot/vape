@@ -103,7 +103,10 @@ jobs:
       - name: Проверить, что контейнер поднимается и готов
         run: |
           docker run -d --name rucrm-check \
-            -e SECRET_KEY=ci-secret-key-достаточной-длины \
+            -e SECRET_KEY="$(openssl rand -hex 32)" \
+            -e PUBLIC_URL=https://ci.example.invalid \
+            -e TELEGRAM_WEBHOOK_SECRET="$(openssl rand -hex 32)" \
+            -e WAZZUP_WEBHOOK_SECRET="$(openssl rand -hex 32)" \
             -e ADMIN_EMAIL=admin@vaplab.ru \
             -e MAIL_FROM=info@vaplab.ru \
             -e SMTP_URL=https://mail.example.invalid/send \
