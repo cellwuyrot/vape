@@ -16,6 +16,7 @@ import crypto from "node:crypto";
 import net from "node:net";
 import tls from "node:tls";
 import fs from "node:fs";
+import { normalizeParam } from "../dialect.js";
 
 const PROTOCOL_VERSION = 196608; // 3.0
 const SSL_REQUEST_CODE = 80877103;
@@ -133,7 +134,7 @@ export function bindMessage(portal, statement, params) {
       w.int32(-1);
       continue;
     }
-    const buf = Buffer.from(String(param), "utf8");
+    const buf = Buffer.from(String(normalizeParam(param)), "utf8");
     w.int32(buf.length).bytes(buf);
   }
   w.int16(0); // результат тоже текстом

@@ -41,6 +41,17 @@ const loginByEmailCode = async (email) => {
 
 before(async () => {
   adminToken = await loginByEmailCode("andycoulbot@gmail.com");
+  // Изолированные данные теста, не зависящие от демонстрационного содержимого миграций.
+  await db.run("INSERT INTO store_products(name,slug,brand,status,price_raw) VALUES(?,?,?,?,?)", ["CI тестовая модель A", "ci-test-product-a", "CI Test", "published", "100 ₽"]);
+  await db.run("INSERT INTO store_products(name,slug,brand,status,price_raw) VALUES(?,?,?,?,?)", ["CI тестовая модель B", "ci-test-product-b", "CI Test", "published", "200 ₽"]);
+  await db.run("INSERT INTO store_products(name,slug,status) VALUES(?,?,?)", ["CI черновик", "ci-test-draft", "draft"]);
+  const products = await db.all("SELECT id FROM store_products WHERE slug IN ('ci-test-product-a','ci-test-product-b')");
+  const categories = await db.all("SELECT id FROM store_categories WHERE parent_id IS NULL");
+  for (const product of products) for (const category of categories) {
+    await db.run("INSERT INTO store_product_categories(product_id,category_id) VALUES(?,?)", [product.id, category.id]);
+  }
+  await db.run("INSERT INTO store_news(title,slug,body,status) VALUES(?,?,?,?)", ["CI тестовая новость", "ci-test-news", "Тестовая публикация", "published"]);
+  await db.run("INSERT INTO store_news(title,slug,body,status) VALUES(?,?,?,?)", ["CI черновик новости", "ci-test-news-draft", "Черновик", "draft"]);
 });
 
 test("сервис отвечает", async () => {
@@ -211,7 +222,7 @@ test("robots.txt и sitemap.xml доступны и не включают зак
   assert.match(xml,/<loc>http:\/\/localhost:\d+\/<\/loc>/);
   assert.match(xml,/<loc>http:\/\/localhost:\d+\/tabak<\/loc>/);
   assert.match(xml,/<loc>http:\/\/localhost:\d+\/stiki<\/loc>/);
-  assert.match(xml,/<loc>http:\/\/localhost:\d+\/product\/mok-fwrd-siniy<\/loc>/);
+  assert.match(xml,/<loc>http:\/\/localhost:\d+\/product\/ci-test-product-a<\/loc>/);
   assert.doesNotMatch(xml,/\/crm|\/api\//);
 });
 
@@ -665,11 +676,11 @@ test("публичная витрина отдаёт категории, под�
   assert.equal(res.status, 200);
   assert.ok(res.data.categories.filter((category) => !category.parent_id).length >= 18);
   assert.ok(res.data.categories.filter((category) => category.parent_id).length >= 5);
-  assert.ok(res.data.products.length >= 70, "публичный каталог содержит примеры по основным направлениям");
-  assert.ok(res.data.products.some((p) => p.slug === "mok-fwrd-siniy"));
-  assert.equal(res.data.products.find((p) => p.slug === "iqos-iluma-i-prime-aspen-green-tyomno-zelyonyy").price_raw, "24 000 ₽ / 17 700 ₽");
-  assert.equal(res.data.news.length, 6, "публично подтверждённые публикации исходного блога доступны в информационной ленте");
-  assert.ok(res.data.news.some((item) => item.slug === "skidka-10-v-chest-hellouina" && /срок предложения.*закончился/i.test(item.body)), "архивное предложение явно помечено как завершившееся");
+  assert.ok(res.data.products.some((p) => p.slug === "ci-test-product-a" && p.price_raw === "100 ₽"));
+  assert.ok(res.data.products.some((p) => p.slug === "ci-test-product-b"));
+  assert.ok(!res.data.products.some((p) => p.slug === "ci-test-draft"));
+  assert.ok(res.data.news.some((item) => item.slug === "ci-test-news"));
+  assert.ok(!res.data.news.some((item) => item.slug === "ci-test-news-draft"));
 });
 
 test("управление витриной закрыто без авторизации", async () => {

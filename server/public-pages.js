@@ -174,7 +174,7 @@ async function loadProductsForCategoryIds(categoryIds, { page = 1, pageSize = 24
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(Math.max(1, Number(page) || 1), totalPages);
   const products = await db.all(
-    `SELECT p.* FROM store_products p WHERE ${where} ORDER BY p.name COLLATE NOCASE,p.id LIMIT ? OFFSET ?`,
+    `SELECT p.* FROM store_products p WHERE ${where} ORDER BY LOWER(p.name),p.id LIMIT ? OFFSET ?`,
     [...ids, pageSize, (safePage - 1) * pageSize],
   );
   if (!products.length) return { items: [], total, page: safePage, pageSize, totalPages };

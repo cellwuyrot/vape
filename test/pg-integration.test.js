@@ -12,7 +12,7 @@
 import assert from "node:assert/strict";
 import test, { after, before, describe } from "node:test";
 
-const url = process.env.DATABASE_URL || "";
+const url = process.env.TEST_POSTGRES_URL || process.env.DATABASE_URL || "";
 const enabled = /^postgres(ql)?:\/\//.test(url);
 
 describe("PostgreSQL", { skip: enabled ? false : "DATABASE_URL не задан — интеграционный прогон пропущен" }, () => {
@@ -52,6 +52,16 @@ describe("PostgreSQL", { skip: enabled ? false : "DATABASE_URL не задан �
     assert.equal(row.ok, 1);
     const version = await driver.get("SELECT MAX(version) AS v FROM schema_migrations");
     assert.ok(Number(version.v) >= 2);
+  });
+
+  test("INSERT в таблицу без id и конфликт без вставки обрабатываются корректно", async () => {
+    const first = await driver.run("INSERT INTO store_settings(setting_key, setting_value) VALUES (?, ?) ON CONFLICT(setting_key) DO NOTHING", ["ci-no-id", "test"]);
+    assert.equal(first.lastId, 0);
+    assert.equal(first.changes, 1);
+    const duplicate = await driver.run("INSERT INTO store_settings(setting_key, setting_value) VALUES (?, ?) ON CONFLICT(setting_key) DO NOTHING", ["ci-no-id", "ignored"]);
+    assert.equal(duplicate.lastId, 0);
+    assert.equal(duplicate.changes, 0);
+    assert.equal((await driver.get("SELECT setting_value FROM store_settings WHERE setting_key=?", ["ci-no-id"])).setting_value, "test");
   });
 
   test("INSERT возвращает идентификатор без ручного RETURNING", async () => {

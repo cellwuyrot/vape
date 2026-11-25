@@ -436,7 +436,7 @@ get("/api/stats", async ({ query, user }) => {
       d.stage, COUNT(d.id) AS count, COALESCE(SUM(d.amount),0) AS amount
      FROM deals d LEFT JOIN users u ON u.id=d.owner_id
      WHERE d.pipeline_id=?
-     GROUP BY d.owner_id,u.full_name,u.email,d.stage
+     GROUP BY d.owner_id,u.role,u.full_name,u.email,d.stage
      ORDER BY owner_name,d.owner_id,d.stage`,
     [pipelineId],
   );
