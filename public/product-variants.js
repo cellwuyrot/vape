@@ -150,8 +150,46 @@
     const option = event.target.closest("[data-product-variant]");
     if (option) {
       selectVariant(option);
+      if (typeof window !== "undefined" && window.history?.replaceState) {
+        const url = new URL(window.location.href); url.searchParams.set("variant", option.dataset.variantId);
+        window.history.replaceState(null, "", url);
+      }
       return;
     }
+  });
+
+  document.querySelectorAll("[data-variant-section]").forEach((section) => {
+    const options = [...section.querySelectorAll("[data-product-variant]")];
+    const filters = section.querySelector("[data-variant-filters]");
+    const search = section.querySelector("[data-variant-search]");
+    const country = section.querySelector("[data-variant-country]");
+    const count = section.querySelector("[data-variant-count]");
+    const pagination = section.querySelector("[data-variant-pagination]");
+    const prev = section.querySelector("[data-variant-prev]");
+    const next = section.querySelector("[data-variant-next]");
+    const pageLabel = section.querySelector("[data-variant-page]");
+    const size = 18; let page = 1;
+    const normalize = (text) => String(text || "").toLocaleLowerCase("ru-RU").trim();
+    function render() {
+      const term = normalize(search.value); const selectedCountry = country?.value || "";
+      const matching = options.filter((item) => normalize(item.dataset.search).includes(term) && (!selectedCountry || (selectedCountry === "__unknown__" ? !item.dataset.country : item.dataset.country === selectedCountry)));
+      const pages = Math.max(1, Math.ceil(matching.length / size)); page = Math.min(page, pages);
+      const shown = new Set(matching.slice((page - 1) * size, page * size));
+      options.forEach((item) => { item.hidden = !shown.has(item); });
+      count.textContent = `Найдено вариантов: ${matching.length}`;
+      pagination.hidden = pages <= 1; prev.disabled = page <= 1; next.disabled = page >= pages; pageLabel.textContent = `${page} / ${pages}`;
+    }
+    filters.hidden = false;
+    search.addEventListener("input", () => { page = 1; render(); });
+    country?.addEventListener("change", () => { page = 1; render(); });
+    prev.addEventListener("click", () => { page -= 1; render(); });
+    next.addEventListener("click", () => { page += 1; render(); });
+    if (typeof window !== "undefined") {
+      const id = new URL(window.location.href).searchParams.get("variant");
+      const selected = options.find((item) => item.dataset.variantId === id) || options.find((item) => item.classList.contains("is-selected"));
+      if (selected) { page = Math.floor(options.indexOf(selected) / size) + 1; if (id === selected.dataset.variantId) selectVariant(selected); }
+    }
+    render();
   });
 
   document.querySelectorAll("[data-product-media]").forEach((gallery) => {

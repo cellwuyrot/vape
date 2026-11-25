@@ -501,3 +501,12 @@
 @media(max-width:380px) { .catalog-items { grid-template-columns:1fr; } }
 
 .seo-search-page .seo-page-heading h1 { font-size:clamp(30px,4vw,46px); line-height:1.15; }
+
+/* Компактная навигация по большому списку вариантов */
+.seo-product-variant-option[hidden], [data-variant-filters][hidden], [data-variant-pagination][hidden] { display:none !important; }
+[data-variant-filters] { display:flex; flex-wrap:wrap; gap:10px; align-items:end; margin-bottom:12px; }
+[data-variant-filters] label { display:grid; gap:4px; font-size:12px; }
+[data-variant-filters] input, [data-variant-filters] select { padding:8px; border:1px solid #cbd2dc; background:white; color:#20252c; max-width:100%; }
+[data-variant-count] { width:100%; margin:0; font-size:12px; }
+[data-variant-pagination] { display:flex; align-items:center; gap:12px; margin-top:12px; }
+[data-variant-pagination] button { padding:7px 12px; cursor:pointer; }
