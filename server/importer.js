@@ -236,7 +236,7 @@ export const ENTITY_FIELDS = {
       seo_description: { label: "SEO Description" },
       seo_keywords: { label: "Ключевые фразы через запятую" },
       canonical_url: { label: "Canonical URL" },
-      robots_index: { label: "Разрешить индексацию: 1 / 0" },
+      robots_index: { label: "Устаревшее поле товара (на индексацию не влияет)" },
       search_volume: { label: "Частотность (целое число)" },
       frequency_class: { label: "Класс частотности: high / medium / low" },
       search_engine: { label: "Поисковая система" },
@@ -261,6 +261,7 @@ export const ENTITY_FIELDS = {
       color: { label: "Цвет" },
       package: { label: "Комплектация" },
       compatibility: { label: "Совместимость" },
+      country: { label: "Страна варианта (как указана в источнике)" },
       variant_attributes_json: { label: "Атрибуты варианта JSON" },
       is_18_plus: { label: "Требуется проверка 18+: 1 / 0" },
       is_reservable: { label: "Разрешить бронирование: 1 / 0" },
@@ -343,6 +344,7 @@ const SYNONYMS = {
     color: ["цвет", "color"],
     package: ["комплектация", "комплект", "package"],
     compatibility: ["совместимость", "compatible with"],
+    country: ["страна варианта", "страна", "country", "variant country"],
     variant_attributes_json: ["атрибуты варианта json", "variant attributes json"],
     is_18_plus: ["18+", "возраст 18+", "требуется 18+", "is 18 plus", "is_18_plus"],
     is_reservable: ["разрешить бронирование", "бронирование разрешено", "reservable", "is_reservable"],
@@ -609,7 +611,7 @@ async function upsertStoreProduct(record, dryRun, database = db, repository = re
   // Иначе невалидный JSON варианта мог оставить товар уже созданным, хотя строка
   // импорта считалась пропущенной.
   const variantAttributes = {};
-  for (const key of ["taste","volume","strength","color","package","compatibility"]) {
+  for (const key of ["taste","volume","strength","color","package","compatibility","country"]) {
     const value = String(record[key] || "").trim();
     if (value) variantAttributes[key] = value;
   }

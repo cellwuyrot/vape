@@ -257,7 +257,8 @@ test("sitemap содержит только канонические индек�
     const sitemapResponse = await fetch(`${base}/sitemap.xml`);
     assert.equal(sitemapResponse.status, 200);
     const xml = await sitemapResponse.text();
-    assert.doesNotMatch(xml, new RegExp(`/product/${product.slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:<|\s)`));
+    const page = await fetch(`${base}/product/${encodeURIComponent(product.slug)}`);
+    assert.equal(page.headers.get("x-robots-tag"), "index, follow");
     const urls = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1]);
     assert.ok(urls.length >= 10, "sitemap должен содержать публичные категории и другие опубликованные страницы");
     for (const value of urls) {

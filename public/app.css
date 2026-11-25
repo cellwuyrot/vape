@@ -779,3 +779,5 @@ input,select,textarea { font-size:15px; }
 .sheet:has(.store-variants-editor) { width:min(1000px,96vw); max-height:calc(100dvh - 24px); display:flex; flex-direction:column; overflow:hidden; }
 .sheet:has(.store-variants-editor) > header { flex:0 0 auto; }
 .sheet:has(.store-variants-editor) > .store-variants-editor { flex:1 1 auto; min-height:0; overflow:auto; }
+
+.store-variant-editor-card[hidden] { display: none !important; }

@@ -783,8 +783,7 @@ get("/api/store/seo-report", async ({ user, query }) => {
 
     const frequency = { high: 0, medium: 0, low: 0, unknown: 0 };
     for (const target of keywordTargets) frequency[target.frequency_class] = (frequency[target.frequency_class] || 0) + 1;
-    const indexingStatus = Number(row.robots_index) === 0 ? "noindex" : row.status === "published" ? "indexable" : "not_published";
-    if (indexingStatus === "noindex") push("noindex", "Страница закрыта от индексации", "notice", 0, "Проверьте, что запрет индексации установлен намеренно.");
+    const indexingStatus = row.status === "published" ? "indexable" : "not_published";
 
     const score = Math.max(0, 100 - issues.reduce((sum, item) => sum + item.weight, 0));
     return {

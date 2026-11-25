@@ -317,6 +317,7 @@ export async function renderStore(root) {
     const variants = (Array.isArray(p.variants) ? p.variants : []).map((variant) => ({ ...variant, attributes: { ...(variant.attributes || {}) }, images: [...(variant.images || [])] }));
     const images = (Array.isArray(p.images) ? p.images : []).map((image) => ({ ...image }));
     const variantList = h("div", { class: "store-variant-list" });
+    const variantSearch = h("input", { type: "search", placeholder: "Поиск варианта, SKU или страны", "aria-label": "Поиск вариантов" });
     const imageList = h("div", { class: "store-variant-image-list" });
     const makeField = (label, control, hint = "") => h("label", { class: "field seo-form-field" }, h("span", {}, label), control, hint ? h("small", { class: "muted" }, hint) : null);
     const parseAttributes = (value) => {
@@ -385,9 +386,12 @@ export async function renderStore(root) {
       syncVariantImages();
       variantList.replaceChildren(...variants.map((variant, index) => {
         const attrs = { ...(variant.attributes || {}) };
-        for (const key of Object.keys(attrs)) if (/цвет|color|colour|оттенок|shade/i.test(key)) delete attrs[key];
+        const countryKey = Object.keys(attrs).find((key) => /^(country|страна)$/i.test(key));
+        const countryValue = countryKey ? String(attrs[countryKey] || "") : "";
+        for (const key of Object.keys(attrs)) if (/цвет|color|colour|оттенок|shade/i.test(key) || /^(country|страна)$/i.test(key)) delete attrs[key];
         const name = h("input", { type: "text", maxlength: "180", required: true, value: variant.name || "", placeholder: "Название варианта" });
         const color = h("input", { type: "text", maxlength: "120", value: colorValue(variant.attributes) || variant.name || "", placeholder: "Например: Graphite Black" });
+        const country = h("input", { type: "text", maxlength: "120", value: countryValue, placeholder: "Как указана в источнике" });
         const sku = h("input", { type: "text", maxlength: "100", value: variant.sku || "", placeholder: "Уникальный SKU варианта" });
         const price = h("input", { type: "text", maxlength: "80", value: variant.price_raw || "", placeholder: "Цена варианта из источника" });
         const oldPrice = h("input", { type: "text", maxlength: "80", value: variant.old_price_raw || "", placeholder: "Старая цена, если есть" });
@@ -397,11 +401,13 @@ export async function renderStore(root) {
         const sortOrder = h("input", { type: "number", min: "0", max: "100000", value: String(variant.sort_order ?? index), placeholder: "Порядок" });
         const extra = h("textarea", { rows: "3", spellcheck: "false", placeholder: '{"Вкус":"...","Объём":"..."}' }, variant._extraDraft ?? JSON.stringify(attrs, null, 2));
         for (const [control, key] of [[name, "name"], [sku, "sku"], [price, "price_raw"], [oldPrice, "old_price_raw"], [availability, "availability_label_raw"], [sortOrder, "sort_order"], [variantDescription, "description"], [variantStatus, "availability_status"], [extra, "_extraDraft"]]) control.addEventListener("input", () => { variant[key] = control.value; });
+        country.addEventListener("input", () => { const updated = { ...(variant.attributes || {}) }; for (const key of Object.keys(updated)) if (/^(country|страна)$/i.test(key)) delete updated[key]; if (country.value.trim()) updated.country = country.value.trim(); variant.attributes = updated; });
         color.addEventListener("input", () => { const updated = { ...(variant.attributes || {}) }; for (const key of Object.keys(updated)) if (/цвет|color|colour|оттенок|shade/i.test(key)) delete updated[key]; updated.color = color.value; variant.attributes = updated; });
         const save = h("button", { type: "button", class: "btn solid", onclick: async () => {
           let attributes;
           try { attributes = parseAttributes(extra.value); }
           catch (error) { toast(error.message); return; }
+          if (country.value.trim()) attributes.country = country.value.trim();
           const body = { name: name.value.trim(), color: color.value.trim(), sku: sku.value.trim(), price_raw: price.value.trim(), old_price_raw: oldPrice.value.trim(), availability_label_raw: availability.value.trim(), availability_status: variantStatus.value, description: variantDescription.value.trim(), sort_order: Number(sortOrder.value || 0), attributes };
           try {
             const response = await api(variant.id ? `/store/products/${p.id}/variants/${variant.id}` : `/store/products/${p.id}/variants`, { method: variant.id ? "PUT" : "POST", body });
@@ -482,7 +488,7 @@ export async function renderStore(root) {
           h("div", { class: "store-variant-editor-heading" }, h("strong", {}, `${variant.name || `Вариант #${variant.id || index + 1}`} · ${colorValue(variant.attributes) || "цвет не указан"}`), h("small", { class: "muted" }, `Фотографий: ${variant.images.length}`)),
           h("div", { class: "store-variant-photo-assignment" }, assignedPhotoStrip, assignSharedPhotos),
           h("div", { class: "seo-editor-grid" },
-            makeField("Название варианта", name), makeField("Цвет / подпись на витрине", color),
+            makeField("Название варианта", name), makeField("Страна (как указана в источнике)", country), makeField("Цвет / подпись на витрине", color),
             makeField("Артикул варианта (уникальный в товаре)", sku), makeField("Цена варианта", price),
             makeField("Старая цена", oldPrice), makeField("Подпись наличия", availability), makeField("Статус наличия варианта", variantStatus), makeField("Описание варианта", variantDescription, "Пусто — используется описание товара."),
             makeField("Порядок показа", sortOrder), makeField("Дополнительные атрибуты JSON", extra, "Цвет хранится отдельно; остальные характеристики сохраняются как JSON."),
@@ -491,9 +497,15 @@ export async function renderStore(root) {
           makeField("Загрузить фотографии этого варианта", fileInput, variant.id ? "Выберите один или несколько JPG, PNG или WebP. Файлы сразу сохранятся у этого цвета." : "Сначала сохраните вариант, затем можно будет загрузить его фотографии."),
           h("div", { class: "store-variant-image-url" }, imageUrl, addUrl),
         );
+        card.dataset.variantSearch = `${variant.name || ""} ${variant.sku || ""} ${countryValue}`.toLocaleLowerCase("ru-RU");
+        card.hidden = Boolean(variant.id) && Boolean(variantSearch.value.trim()) && !card.dataset.variantSearch.includes(variantSearch.value.trim().toLocaleLowerCase("ru-RU"));
         return card;
       }));
     }
+    variantSearch.addEventListener("input", () => {
+      const term = variantSearch.value.trim().toLocaleLowerCase("ru-RU");
+      for (const card of variantList.children) card.hidden = Boolean(term) && !card.dataset.variantSearch.includes(term);
+    });
 
     const addVariant = h("button", { type: "button", class: "btn solid", onclick: () => {
       variants.push({ id: null, name: "", sku: "", attributes: {}, price_raw: "", old_price_raw: "", availability_label_raw: "", sort_order: variants.length, images: [] });
@@ -501,7 +513,7 @@ export async function renderStore(root) {
     } }, "Добавить вариант / цвет");
     const body = h("div", { class: "store-variants-editor" },
       h("p", { class: "muted" }, "Создайте отдельный вариант для каждого цвета или исполнения. Сначала сохраните вариант, затем загрузите или привяжите его фотографии. Фото можно переназначить между общим товаром и конкретным вариантом."),
-      h("div", { class: "store-variants-toolbar" }, addVariant, h("span", { class: "muted" }, `Товар: ${p.name} · SKU: ${p.sku || "не указан"}`)),
+      h("div", { class: "store-variants-toolbar" }, addVariant, variantSearch, h("span", { class: "muted" }, `Товар: ${p.name} · SKU: ${p.sku || "не указан"}`)),
       variantList,
       imageList,
     );
@@ -518,8 +530,7 @@ export async function renderStore(root) {
     const seoDescription = h("textarea", { rows: "4", maxlength: "320", placeholder: "Кратко и точно опишите содержание страницы" }, p.seo_description || p.description || "");
     const canonical = h("input", { type: "url", value: p.canonical_url || "", placeholder: "https://example.ru/product/slug" });
     const keywords = h("textarea", { rows: "3", placeholder: "Один запрос на строку или через запятую" }, (p.seo_keywords || []).join("\n"));
-    const robotsIndex = h("input", { type: "checkbox" });
-    robotsIndex.checked = Number(p.robots_index ?? 1) === 1;
+
     const counters = {
       h1: h("small", { class: "seo-char-counter" }, `${seoH1.value.length}/160`),
       title: h("small", { class: "seo-char-counter" }, `${seoTitle.value.length}/180`),
@@ -549,7 +560,7 @@ export async function renderStore(root) {
         makeField("Canonical URL", canonical, "Оставьте пустым, чтобы использовать канонический адрес страницы по умолчанию."),
         makeField("Поисковые запросы", keywords, "Один запрос на строку. Частотность и источник добавляются отдельно ниже в SEO-анализе."),
       ),
-      h("label", { class: "seo-index-toggle" }, robotsIndex, h("span", {}, h("strong", {}, "Разрешить индексацию"), h("small", { class: "muted" }, "Публикация и индексация — разные состояния. Черновик не станет публичным только из-за этой галочки."))),
+      h("p", { class: "muted" }, "Индексация товара определяется статусом: опубликован — доступен для индексации; черновик и архив не публикуются. Наличие на складе — отдельный параметр."),
       h("div", { class: "seo-preview-card" }, h("span", { class: "eyebrow" }, "Предварительный просмотр"), previewUrl, previewTitle, previewDescription),
       h("div", { class: "seo-editor-actions" },
         h("span", { class: "muted" }, "Изменения сохраняются в карточке товара."),
@@ -563,7 +574,7 @@ export async function renderStore(root) {
       try {
         await api(`/store/products/${p.id}`, { method: "PUT", body: {
           seo_h1: seoH1.value.trim(), seo_title: seoTitle.value.trim(), seo_description: seoDescription.value.trim(),
-          canonical_url: canonical.value.trim(), robots_index: robotsIndex.checked, seo_keywords: seoKeywords,
+          canonical_url: canonical.value.trim(), seo_keywords: seoKeywords,
         } });
         toast("SEO-поля сохранены"); close(); await reload();
       } catch (error) { toast(error.message); }
