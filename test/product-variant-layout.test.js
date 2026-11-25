@@ -14,6 +14,11 @@ test("витрина выводит одно главное изображени
   assert.doesNotMatch(styles, /seo-product-gallery-thumbs|seo-product-thumb/);
 });
 
+test("заглушка галереи скрывается с атрибутом hidden", () => {
+  assert.match(styles, /\.seo-product-gallery-stage>\[data-product-gallery-placeholder\]\[hidden\]\s*\{\s*display:none;\s*\}/);
+  assert.match(client, /if \(placeholder\) placeholder\.hidden = true;/);
+});
+
 test("выбор варианта меняет главное изображение из привязки варианта", () => {
   assert.match(publicPages, /data-image-url=\"\$\{esc\(item\.image\?\.public_url \|\| fallbackImage\)\}\"/);
   assert.match(client, /const variantImage = button\.dataset\.imageUrl \|\| gallery\.dataset\.defaultImage \|\| \"\"/);
