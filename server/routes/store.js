@@ -10,6 +10,7 @@ import { config } from "../config.js";
 import { safeFilename } from "../storage.js";
 import { sendEmail } from "../notify.js";
 import { getChannel } from "../channels.js";
+import { searchScore } from "../catalog-search.js";
 
 const PUBLIC_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../public");
 
@@ -142,7 +143,7 @@ ${productUrl}`);
   return { subscribers: subscribers.length, email_sent: emailSent, telegram_sent: telegramSent };
 }
 
-get("/api/store/public", async () => {
+async function publicNavigation() {
   const categories = await db.all(`SELECT c.id,c.parent_id,c.name,c.slug,c.description,c.sort_order,c.featured_product_id,
     (SELECT p.id FROM store_products p WHERE p.id=c.featured_product_id AND p.status='published') AS public_featured_product_id,
     (SELECT p.name FROM store_products p WHERE p.id=c.featured_product_id AND p.status='published') AS public_featured_product_name,
@@ -152,29 +153,32 @@ get("/api/store/public", async () => {
     (SELECT i.url_original FROM store_product_images i WHERE i.product_id=c.featured_product_id ORDER BY i.position,i.id LIMIT 1) AS public_featured_product_image,
     COALESCE((SELECT p.slug FROM store_category_page_categories m JOIN store_category_pages p ON p.id=m.page_id WHERE m.category_id=c.id AND p.status='published' ORDER BY p.sort_order LIMIT 1), c.slug) AS public_slug
     FROM store_categories c WHERE c.is_active=1 ORDER BY c.sort_order,c.name`);
-  const products = await db.all("SELECT id,name,slug,sku,brand,product_type,format,description,specifications_json,price_raw,old_price_raw,currency,availability_label_raw,availability_status,is_18_plus,is_reservable,source_url,seo_h1,seo_title,seo_description,seo_keywords_json,canonical_url,robots_index,image_search_query FROM store_products WHERE status='published' ORDER BY name");
   const news = await db.all("SELECT id,title,slug,excerpt,body,body_html,image_url,image_hidden,is_18_plus,product_ids_json,published_at,source_url FROM store_news WHERE status='published' ORDER BY published_at DESC LIMIT 12");
-  const pages = await db.all("SELECT title,slug,page_type,body FROM store_pages WHERE status='published' AND legal_review_status='approved' ORDER BY title");
   const settings = await db.all("SELECT setting_key,setting_value FROM store_settings");
+  return { categories: categories.map((category) => ({
+    ...category,
+    featured_product: category.public_featured_product_id ? {
+      id: category.public_featured_product_id, name: category.public_featured_product_name,
+      slug: category.public_featured_product_slug, brand: category.public_featured_product_brand,
+      price_raw: category.public_featured_product_price, image_url: category.public_featured_product_image,
+    } : null,
+  })), news, settings: Object.fromEntries(settings.map((s) => [s.setting_key, s.setting_value])) };
+}
+
+get("/api/store/navigation", async () => ({ data: await publicNavigation() }));
+
+get("/api/store/public", async () => {
+  const navigation = await publicNavigation();
+  const products = await db.all("SELECT id,name,slug,sku,brand,product_type,format,description,specifications_json,price_raw,old_price_raw,currency,availability_label_raw,availability_status,is_18_plus,is_reservable,source_url,seo_h1,seo_title,seo_description,seo_keywords_json,canonical_url,robots_index,image_search_query FROM store_products WHERE status='published' ORDER BY name");
+  const pages = await db.all("SELECT title,slug,page_type,body FROM store_pages WHERE status='published' AND legal_review_status='approved' ORDER BY title");
   const productIds = products.map((p) => p.id);
   const images = productIds.length ? await db.all(`SELECT id,product_id,variant_id,url_original,alt_raw,position,source_url,download_status FROM store_product_images WHERE product_id IN (${productIds.map(() => "?").join(",")}) ORDER BY position,id`, productIds) : [];
   const relations = productIds.length ? await db.all(`SELECT product_id,category_id FROM store_product_categories WHERE product_id IN (${productIds.map(() => "?").join(",")})`, productIds) : [];
   const variants = productIds.length ? await db.all(`SELECT id,product_id,name,sku,attributes_json,price_raw,old_price_raw,currency,availability_label_raw,availability_status,description,sort_order FROM store_product_variants WHERE product_id IN (${productIds.map(() => "?").join(",")}) ORDER BY sort_order,id`, productIds) : [];
   return { data: {
-    categories: categories.map((category) => ({
-      ...category,
-      featured_product: category.public_featured_product_id ? {
-        id: category.public_featured_product_id,
-        name: category.public_featured_product_name,
-        slug: category.public_featured_product_slug,
-        brand: category.public_featured_product_brand,
-        price_raw: category.public_featured_product_price,
-        image_url: category.public_featured_product_image,
-      } : null,
-    })),
+    ...navigation,
     products: products.map((p) => ({ ...p, specifications: json(p.specifications_json), images: images.filter((i) => i.product_id === p.id), variants: variants.filter((v) => v.product_id === p.id).map((v) => ({ ...v, attributes: json(v.attributes_json, {}), images: images.filter((i) => Number(i.variant_id) === Number(v.id)) })), category_ids: relations.filter((r) => r.product_id === p.id).map((r) => r.category_id) })),
-    news, pages,
-    settings: Object.fromEntries(settings.map((s) => [s.setting_key, s.setting_value])),
+    pages,
   } };
 });
 
@@ -366,73 +370,70 @@ get("/api/store/admin", async ({ user, query }) => {
   } };
 }, { auth: true });
 
-/** Поиск по названию, артикулам, брендам, характеристикам и SEO-полям с допуском одной опечатки. */
-/** Публичный поиск по опубликованным товарам. Ранжирует точные совпадения и допускает одну опечатку. */
+/** Public search: all terms must match, including variant names and SKUs. */
 get("/api/store/search", async ({ query, req }) => {
-  rateLimit(`store-public-search:${clientIp(req)}`, 40, 60_000);
+  rateLimit(`store-public-search:${clientIp(req)}`, 100, 60_000);
   const raw = String(query.get("q") || "").trim().slice(0, 120);
-  const normalized = normalizeMatch(raw);
-  if (normalized.length < 2) return { data: { query: raw, total: 0, results: [] } };
-  const tokens = normalized.split(" ").filter(Boolean).slice(0, 8);
-  const rows = await db.all(`SELECT p.id,p.name,p.slug,p.sku,p.brand,p.product_type,p.format,p.description,p.specifications_json,
-    p.price_raw,p.is_18_plus,p.seo_h1,p.seo_title,p.seo_description,
-    (SELECT url_original FROM store_product_images i WHERE i.product_id=p.id ORDER BY i.position,i.id LIMIT 1) AS image_url
-    FROM store_products p WHERE p.status='published' ORDER BY p.updated_at DESC,p.name LIMIT 10000`);
-  const categoryRows = await db.all(`SELECT pc.product_id,c.name FROM store_product_categories pc
-    JOIN store_categories c ON c.id=pc.category_id JOIN store_products p ON p.id=pc.product_id
-    WHERE p.status='published' ORDER BY c.sort_order,c.name`);
-  const categoryNames = new Map();
-  for (const row of categoryRows) {
-    const list = categoryNames.get(Number(row.product_id)) || [];
-    list.push(row.name);
-    categoryNames.set(Number(row.product_id), list);
+  if (normalizeMatch(raw).length < 2) return { data: { query: raw, total: 0, results: [], category_results: [] } };
+  const allCategories = await db.all(`SELECT c.id,c.parent_id,c.name,c.slug,
+    COALESCE((SELECT p.slug FROM store_category_page_categories m JOIN store_category_pages p ON p.id=m.page_id WHERE m.category_id=c.id AND p.status='published' ORDER BY p.sort_order LIMIT 1),c.slug) AS public_slug
+    FROM store_categories c WHERE c.is_active=1 ORDER BY c.sort_order,c.name`);
+  const categoryId = Math.max(0, Number(query.get("category_id")) || 0);
+  const selected = new Set(categoryId ? [categoryId] : []);
+  if (categoryId) {
+    let size = 0;
+    while (size !== selected.size) {
+      size = selected.size;
+      for (const c of allCategories) if (selected.has(Number(c.parent_id))) selected.add(Number(c.id));
+    }
   }
-  const editDistance = (a, b) => {
-    if (Math.abs(a.length - b.length) > 1) return 2;
-    let i = 0, j = 0, edits = 0;
-    while (i < a.length && j < b.length) {
-      if (a[i] === b[j]) { i++; j++; continue; }
-      if (++edits > 1) return edits;
-      if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; }
-    }
-    if (i < a.length || j < b.length) edits++;
-    return edits;
-  };
-  const ranked = rows.map((product) => {
-    const name = normalizeMatch(product.name);
-    const specs = (() => { try { return JSON.parse(product.specifications_json || "{}"); } catch { return {}; } })();
-    const categoryText = (categoryNames.get(Number(product.id)) || []).join(" ");
-    const fields = [product.name, product.sku, product.brand, product.product_type, product.format, product.description,
-      JSON.stringify(specs), categoryText, product.seo_h1, product.seo_title, product.seo_description].map(normalizeMatch);
-    const haystack = fields.join(" ");
-    const words = new Set(haystack.split(" ").filter(Boolean));
-    let score = 0;
-    if (name === normalized) score += 180;
-    else if (name.startsWith(normalized)) score += 120;
-    else if (name.includes(normalized)) score += 90;
-    else if (haystack.includes(normalized)) score += 70;
-    for (const token of tokens) {
-      if (name.split(" ").some((word) => word.startsWith(token))) score += 35;
-      else if (fields.slice(1, 5).some((value) => value.includes(token))) score += 25;
-      else if (haystack.includes(token)) score += 12;
-      else if ([...words].some((word) => word.length > 3 && token.length > 3 && editDistance(token, word) <= 1)) score += 7;
-    }
-    if (tokens.length > 1 && tokens.every((token) => haystack.includes(token))) score += 24;
-    return { ...product, score };
-  }).filter((product) => product.score > 0)
-    .sort((a, b) => b.score - a.score || String(a.name).localeCompare(String(b.name), "ru"));
+  const categoryResults = allCategories.map((c) => ({ ...c, score: searchScore(raw, [c.name]) }))
+    .filter((c) => c.score > 0 && (!categoryId || selected.has(Number(c.id))))
+    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, "ru"))
+    .map(({ id, parent_id, name, slug, public_slug }) => ({ id, parent_id, name, slug: parent_id ? slug : public_slug }));
+  const rows = await db.all(`SELECT id,name,slug,sku,brand,product_type,format,description,specifications_json,
+    price_raw,is_18_plus,seo_h1,seo_title,seo_description FROM store_products WHERE status='published'`);
+  const relations = await db.all(`SELECT pc.product_id,pc.category_id,c.name FROM store_product_categories pc
+    JOIN store_categories c ON c.id=pc.category_id JOIN store_products p ON p.id=pc.product_id
+    WHERE p.status='published' AND c.is_active=1`);
+  const variants = await db.all(`SELECT v.product_id,v.name,v.sku,v.attributes_json FROM store_product_variants v
+    JOIN store_products p ON p.id=v.product_id WHERE p.status='published'`);
+  const categories = new Map();
+  for (const rel of relations) {
+    const list = categories.get(Number(rel.product_id)) || [];
+    list.push(rel); categories.set(Number(rel.product_id), list);
+  }
+  const variantFields = new Map();
+  for (const variant of variants) {
+    const list = variantFields.get(Number(variant.product_id)) || [];
+    list.push(variant.name, variant.sku, variant.attributes_json); variantFields.set(Number(variant.product_id), list);
+  }
+  const ranked = [];
+  for (const product of rows) {
+    const rel = categories.get(Number(product.id)) || [];
+    if (categoryId && !rel.some((c) => selected.has(Number(c.category_id)))) continue;
+    const fields = [product.name, product.sku, product.brand, product.product_type, product.format,
+      ...(variantFields.get(Number(product.id)) || []), ...rel.map((c) => c.name),
+      product.description, product.specifications_json, product.seo_h1, product.seo_title, product.seo_description];
+    const score = searchScore(raw, fields);
+    if (score > 0) ranked.push({ ...product, score, categories: rel.map((c) => c.name) });
+  }
+  ranked.sort((a, b) => b.score - a.score || String(a.name).localeCompare(String(b.name), "ru") || Number(a.id) - Number(b.id));
   const page = Math.max(1, Math.min(100000, Number(query.get("page") || 1) || 1));
   const pageSize = Math.max(12, Math.min(48, Number(query.get("page_size") || 12) || 12));
   const total = ranked.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, totalPages);
   const pageItems = ranked.slice((safePage - 1) * pageSize, safePage * pageSize);
-  return { data: { query: raw, total, page: safePage, page_size: pageSize, total_pages: totalPages, results: pageItems.map((item) => ({
-    id: item.id, name: item.name, slug: item.slug, sku: item.sku, brand: item.brand,
-    product_type: item.product_type, price_raw: item.price_raw, is_18_plus: Number(item.is_18_plus) === 1,
-    image_url: /^(https:\/\/|\/assets\/|\/uploads\/)/i.test(String(item.image_url || "")) ? item.image_url : "",
-    categories: categoryNames.get(Number(item.id)) || [],
-  })) } };
+  const ids = pageItems.map((p) => p.id);
+  const images = ids.length ? await db.all(`SELECT product_id,url_original,position,id FROM store_product_images WHERE product_id IN (${ids.map(() => "?").join(",")}) ORDER BY position,id`, ids) : [];
+  const imagesByProduct = new Map();
+  for (const image of images) if (!imagesByProduct.has(Number(image.product_id))) imagesByProduct.set(Number(image.product_id), image.url_original);
+  return { data: { query: raw, total, page: safePage, page_size: pageSize, total_pages: totalPages, category_results: categoryResults,
+    results: pageItems.map((item) => ({ id: item.id, name: item.name, slug: item.slug, sku: item.sku, brand: item.brand,
+      product_type: item.product_type, price_raw: item.price_raw, is_18_plus: Number(item.is_18_plus) === 1,
+      image_url: /^(https:\/\/|\/assets\/|\/uploads\/)/i.test(String(imagesByProduct.get(Number(item.id)) || "")) ? imagesByProduct.get(Number(item.id)) : "",
+      categories: item.categories })) } };
 });
 
 get("/api/store/smart-search", async ({ user, query }) => {

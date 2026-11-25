@@ -59,31 +59,25 @@ test("категории показывают выбранный товар с �
 });
 
 
-test("витрина использует ровно четыре статуса товара и массовое применение", async () => {
+test("витрина поддерживает массовую публикацию и изменение наличия", async () => {
   const source = await read("public/js/views/store.js");
   const server = await read("server/routes/store.js");
   assert.match(source, /selectedProductIds/);
-  assert.match(source, /Показан и продаётся/);
-  assert.match(source, /Показан, нет в наличии/);
-  assert.match(source, /Скрыт/);
-  assert.match(source, /Черновик/);
-  assert.doesNotMatch(source, /Отметить: предзаказ|Наличие уточняется|Статус наличия/);
+  for (const label of ["Показать в каталоге", "Скрыть из каталога", "Отметить: в наличии", "Отметить: отсутствует", "Отметить: предзаказ"]) assert.ok(source.includes(label));
   assert.match(source, /За одну операцию можно выбрать не более 100 товаров/);
   assert.match(server, /store\/products\/bulk/);
-  assert.match(server, /CATALOG_STATUSES/);
   assert.match(server, /restock-subscriptions\/:id\/notify/);
 });
 
-test("админка показывает цены цветовых вариантов в раскрывающейся строке и управляет автопривязкой фото", async () => {
+test("админка редактирует варианты и привязывает к ним фотографии", async () => {
   const source = await read("public/js/views/store.js");
   const server = await read("server/routes/store.js");
-  assert.match(source, /store-product-name-button/);
-  assert.match(source, /store-variant-price-expansion/);
-  assert.match(source, /Цветовые варианты и цены/);
-  assert.match(source, /Сохранить цвета и сопоставить фотографии/);
-  assert.match(source, /Автоматически связать фото с цветами/);
-  assert.match(server, /images\/match-variants/);
-  assert.match(server, /matchImageVariant/);
+  assert.match(source, /Настроить варианты и фото/);
+  assert.match(source, /Цена варианта/);
+  assert.match(source, /Описание варианта/);
+  assert.match(source, /Загрузить фотографии этого варианта/);
+  assert.match(source, /Выбрать уже загруженное фото для этого варианта/);
+  assert.match(server, /products\/:id\/variants/);
 });
 
 test("оптовая страница остаётся отдельным маршрутом, но не занимает место в верхней навигации", async () => {

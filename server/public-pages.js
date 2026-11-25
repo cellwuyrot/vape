@@ -124,6 +124,7 @@ function htmlDocument({ title, description, canonical, robots = "index, follow",
 <script defer src="/store-reservations.js"></script>
 <script defer src="/store-restock.js"></script>
 <script defer src="/customer-tools.js"></script>
+<script defer src="/catalog-browser.js"></script>
 <title>${escapedTitle}</title>
 </head>
 <body class="seo-page">
@@ -136,14 +137,14 @@ function siteHeader() {
   return `<div class="topline"><div class="wrap topline-inner"><span>VAPELAB</span><span>Информационный каталог компании</span><span>Информация и бронирование</span></div></div>
 <header class="site-header"><div class="wrap header-inner">
 <a class="brand" href="/" aria-label="VAPELAB — главная"><span class="brand-mark"><img src="/assets/brand/vapelab-logo.webp" alt="Логотип VAPELAB"></span><span class="brand-copy"><strong>VAPELAB</strong><small>Каталог и история компании</small></span></a>
-<nav class="main-nav" aria-label="Основная навигация"><a href="/">Главная</a><a href="/tabak">Каталог</a><a href="/#news">Новости</a><a href="/#contacts">Контакты</a></nav>
+<nav class="main-nav" aria-label="Основная навигация"><a href="/">Главная</a><a href="/catalog/categories">Каталог</a><a href="/#news">Новости</a><a href="/#contacts">Контакты</a></nav>
 <a class="login-link" href="/crm">Личный кабинет <span aria-hidden="true">↗</span></a>
 <button class="menu-toggle" id="menu-toggle" type="button" aria-label="Открыть меню" aria-expanded="false" aria-controls="mobile-nav"><span></span><span></span></button>
-</div><nav class="mobile-nav" id="mobile-nav" aria-label="Мобильная навигация" hidden><a href="/">Главная</a><a href="/tabak">Каталог</a><a href="/#news">Новости</a><a href="/#contacts">Контакты</a><a href="/crm">Личный кабинет</a></nav></header>`;
+</div><nav class="mobile-nav" id="mobile-nav" aria-label="Мобильная навигация" hidden><a href="/">Главная</a><a href="/catalog/categories">Каталог</a><a href="/#news">Новости</a><a href="/#contacts">Контакты</a><a href="/crm">Личный кабинет</a></nav></header>`;
 }
 
 function siteFooter(description = "Информация о компании, категориях и карточках каталога.") {
-  return `<footer class="site-footer"><div class="wrap footer-main"><a class="footer-brand" href="/" aria-label="VAPELAB — на главную"><span class="footer-mark"><img src="/assets/brand/vapelab-logo.webp" alt=""></span><span>VAPELAB</span></a><p>${esc(description)}</p><nav aria-label="Навигация в подвале"><a href="/tabak">Каталог</a><a href="/#about">О компании</a><a href="/#news">Новости</a><a href="/#contacts">Контакты</a><a href="/page/privacy">Политика конфиденциальности</a><a href="/page/delivery">Доставка</a><a href="/crm">Личный кабинет ↗</a><button type="button" class="cookie-settings-button" data-cookie-settings data-analytics-ignore>Настройки cookie</button></nav></div><div class="wrap footer-bottom"><span>© ${new Date().getFullYear()} VAPELAB</span><a href="/">На главную ↑</a></div></footer>`;
+  return `<footer class="site-footer"><div class="wrap footer-main"><a class="footer-brand" href="/" aria-label="VAPELAB — на главную"><span class="footer-mark"><img src="/assets/brand/vapelab-logo.webp" alt=""></span><span>VAPELAB</span></a><p>${esc(description)}</p><nav aria-label="Навигация в подвале"><a href="/catalog/categories">Каталог</a><a href="/#about">О компании</a><a href="/#news">Новости</a><a href="/#contacts">Контакты</a><a href="/page/privacy">Политика конфиденциальности</a><a href="/page/delivery">Доставка</a><a href="/crm">Личный кабинет ↗</a><button type="button" class="cookie-settings-button" data-cookie-settings data-analytics-ignore>Настройки cookie</button></nav></div><div class="wrap footer-bottom"><span>© ${new Date().getFullYear()} VAPELAB</span><a href="/">На главную ↑</a></div></footer>`;
 }
 
 function breadcrumb(items) {
@@ -173,7 +174,7 @@ async function loadProductsForCategoryIds(categoryIds, { page = 1, pageSize = 24
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(Math.max(1, Number(page) || 1), totalPages);
   const products = await db.all(
-    `SELECT p.* FROM store_products p WHERE ${where} ORDER BY p.name COLLATE NOCASE,p.id LIMIT ? OFFSET ?`,
+    `SELECT p.* FROM store_products p WHERE ${where} ORDER BY LOWER(p.name),p.id LIMIT ? OFFSET ?`,
     [...ids, pageSize, (safePage - 1) * pageSize],
   );
   if (!products.length) return { items: [], total, page: safePage, pageSize, totalPages };
@@ -381,13 +382,135 @@ async function renderProduct(req, res, product, base) {
 }
 
 
+const categoryNormalize = (s = "") => String(s).normalize("NFKC").toLocaleLowerCase("ru-RU").replace(/ё/g, "е").trim();
+const categoryLetter = (s = "") => {
+  const first = String(s).trim().toLocaleUpperCase("ru-RU").charAt(0);
+  return /^[А-ЯЁA-Z]$/.test(first) ? first : "#";
+};
+async function activeCategoryRows() {
+  return db.all(`SELECT c.id,c.parent_id,c.name,c.slug,
+    COALESCE((SELECT p.slug FROM store_category_page_categories m JOIN store_category_pages p ON p.id=m.page_id WHERE m.category_id=c.id AND p.status='published' ORDER BY p.sort_order LIMIT 1),c.slug) AS public_slug
+    FROM store_categories c WHERE c.is_active=1`);
+}
+
+async function renderCatalogDirectory(req, res, base) {
+  const url = new URL(req.url, "http://localhost");
+  const rows = await activeCategoryRows();
+  const byId = new Map(rows.map((row) => [Number(row.id), row]));
+  const compare = (a, b) => a.name.localeCompare(b.name, "ru", { sensitivity: "base", numeric: true });
+  const roots = rows.filter((row) => !row.parent_id || !byId.has(Number(row.parent_id))).sort(compare);
+  const children = new Map();
+  for (const row of rows) {
+    const parent = Number(row.parent_id);
+    if (parent && byId.has(parent)) { const list = children.get(parent) || []; list.push(row); children.set(parent, list); }
+  }
+  const groups = roots.map((root) => {
+    const items = []; const visited = new Set([Number(root.id)]);
+    const visit = (parent) => { for (const row of children.get(Number(parent.id)) || []) {
+      if (visited.has(Number(row.id))) continue;
+      visited.add(Number(row.id)); items.push(row); visit(row);
+    } };
+    visit(root);
+    return { root, items: [root, ...items].sort(compare) };
+  });
+  const groupId = Number(url.searchParams.get("group")) || 0;
+  const selected = groups.some((group) => Number(group.root.id) === groupId) ? groupId : 0;
+  const q = String(url.searchParams.get("q") || "").trim().slice(0, 100);
+  const letterParam = String(url.searchParams.get("letter") || "").toLocaleUpperCase("ru-RU");
+  const letter = /^[А-ЯЁA-Z#]$/.test(letterParam) ? letterParam : "";
+  const selectedGroups = selected ? groups.filter((g) => Number(g.root.id) === selected) : groups;
+  const available = [...new Set(selectedGroups.flatMap((g) => g.items.map((item) => categoryLetter(item.name))))].sort((a, b) => a === "#" ? 1 : b === "#" ? -1 : a.localeCompare(b, "ru"));
+  const linkTo = (values = {}) => {
+    const params = new URLSearchParams();
+    const group = values.group === undefined ? selected : values.group;
+    const term = values.q === undefined ? q : values.q;
+    const initial = values.letter === undefined ? letter : values.letter;
+    if (group) params.set("group", String(group));
+    if (term) params.set("q", term);
+    if (initial) params.set("letter", initial);
+    const qs = params.toString(); return `/catalog/categories${qs ? `?${qs}` : ""}`;
+  };
+  const match = (item) => (!q || categoryNormalize(item.name).includes(categoryNormalize(q))) && (!letter || categoryLetter(item.name) === letter);
+  const count = selectedGroups.reduce((sum, group) => sum + group.items.filter(match).length, 0);
+  const nav = `<a href="${esc(linkTo({ group: 0, letter: "" }))}" data-catalog-group-link="0"${!selected ? ' aria-current="page"' : ""}>Все разделы <span>${groups.length}</span></a>` + groups.map(({ root, items }) => `<a href="${esc(linkTo({ group: root.id, letter: "" }))}" data-catalog-group-link="${Number(root.id)}"${selected === Number(root.id) ? ' aria-current="page"' : ""}>${escText(root.name)} <span>${items.length}</span></a>`).join("");
+  const alphabet = `<a href="${esc(linkTo({ letter: "" }))}" data-catalog-letter=""${!letter ? ' aria-current="page"' : ""}>Все</a>` + available.map((l) => `<a href="${esc(linkTo({ letter: l }))}" data-catalog-letter="${esc(l)}"${letter === l ? ' aria-current="page"' : ""}>${esc(l)}</a>`).join("");
+  const sections = groups.map(({ root, items }) => {
+    const rootVisible = !selected || Number(root.id) === selected;
+    const entries = items.map((item) => {
+      const visible = rootVisible && match(item);
+      const slug = Number(item.id) === Number(root.id) ? root.public_slug : item.slug;
+      return `<li data-catalog-item data-group="${Number(root.id)}" data-name="${esc(item.name)}" data-letter="${esc(categoryLetter(item.name))}"${visible ? "" : " hidden"}><a href="/${encodeURIComponent(slug)}"><span>${escText(item.name)}</span><span aria-hidden="true">↗</span></a></li>`;
+    }).join("");
+    const show = rootVisible && items.some(match);
+    return `<section class="catalog-group" data-catalog-section data-group="${Number(root.id)}"${show ? "" : " hidden"}><div class="catalog-group-heading"><h2>${escText(root.name)}</h2><a href="/${encodeURIComponent(root.public_slug)}">Все товары раздела ↗</a></div><ul class="catalog-items">${entries}</ul></section>`;
+  }).join("");
+  const opts = `<option value="0">Все разделы</option>` + groups.map(({root}) => `<option value="${Number(root.id)}"${selected === Number(root.id) ? " selected" : ""}>${escText(root.name)}</option>`).join("");
+  const body = `${siteHeader()}<main class="wrap seo-main catalog-directory" id="catalog-directory">${breadcrumb([{ label: "Все категории" }])}<header class="catalog-intro">
+<p class="seo-eyebrow">КАТАЛОГ VAPELAB</p>
+<h1>Категории и бренды</h1>
+<p>Выберите направление, найдите категорию по названию или перейдите к нужной букве.</p>
+</header>
+<div class="catalog-layout">
+<aside class="catalog-sidebar">
+<h2>Направления</h2>
+<nav aria-label="Направления каталога">${nav}</nav>
+</aside>
+<div class="catalog-content">
+<form class="catalog-controls" action="/catalog/categories" method="get">
+<label for="catalog-query">Найти категорию</label>
+<div class="catalog-search-row">
+<input type="search" id="catalog-query" name="q" value="${esc(q)}" placeholder="Например, ATOM или стики" maxlength="100">
+<button type="submit">Найти</button>
+</div>
+<label class="catalog-mobile-select" for="catalog-group-select">Направление</label>
+<select class="catalog-mobile-select" id="catalog-group-select" aria-label="Направление">${opts}</select>
+<input type="hidden" name="group" value="${selected || ""}">
+<input type="hidden" name="letter" value="${esc(letter)}">
+</form>
+<div class="catalog-alphabet-label">По первой букве</div>
+<nav class="catalog-alphabet" aria-label="Категории по первой букве">${alphabet}</nav>
+<p class="catalog-count" role="status" aria-live="polite">Найдено категорий: <strong>${count}</strong>
+</p>
+<p class="catalog-empty" data-catalog-empty${count ? " hidden" : ""}>Категории не найдены. Измените запрос или выберите другую букву.</p>
+<div class="catalog-groups">${sections}</div>
+</div>
+</div>
+</main>${siteFooter()}`;
+  sendHtml(req, res, htmlDocument({ title: "Все категории — VAPELAB", description: "Категории и бренды информационного каталога VAPELAB.", canonical: canonicalFor(base, "/catalog/categories"), body }));
+}
+
 async function renderSearchPage(req, res, base) {
-  const url = new URL(req.url, base);
+  const url = new URL(req.url, "http://localhost");
   const query = String(url.searchParams.get("q") || "").trim().slice(0, 120);
   const page = Math.max(1, Math.min(100000, Number(url.searchParams.get("page") || 1) || 1));
+  const selected = Math.max(0, Number(url.searchParams.get("category_id") || 0) || 0);
+  const categories = (await activeCategoryRows()).sort((a,b) => a.name.localeCompare(b.name,"ru",{sensitivity:"base",numeric:true}));
+  const options = categories.map((c) => `<option value="${Number(c.id)}"${Number(c.id) === selected ? " selected" : ""}>${escText(c.name)}</option>`).join("");
   const title = query ? `Поиск: ${query} — VAPELAB` : "Поиск товаров — VAPELAB";
-  const description = query ? `Результаты поиска товаров VAPELAB по запросу «${query}».` : "Поиск товаров в информационном каталоге VAPELAB.";
-  const body = `${siteHeader()}<main class="wrap seo-main seo-search-page"><div class="seo-page-heading"><p class="seo-eyebrow">КАТАЛОГ VAPELAB</p><h1>Поиск товаров</h1><p>${query ? `Результаты по запросу: <strong>${esc(query)}</strong>` : "Введите название, бренд или артикул в строке поиска выше."}</p></div><section id="vapelab-search-page" data-query="${esc(query)}" data-page="${page}" aria-live="polite"><p class="vapelab-search-page-summary">${query ? "Ищем подходящие товары…" : "Для начала поиска введите запрос длиной от двух символов."}</p><div class="vapelab-search-page-results seo-product-grid"></div><nav class="vapelab-search-page-pagination" aria-label="Страницы результатов поиска"></nav></section></main>${siteFooter("Поиск по опубликованным товарам каталога VAPELAB.")}`;
+  const description = "Поиск товаров и категорий информационного каталога VAPELAB.";
+  const body = `${siteHeader()}<main class="wrap seo-main seo-search-page">${breadcrumb([{label:"Поиск"}])}<div class="seo-page-heading">
+<p class="seo-eyebrow">КАТАЛОГ VAPELAB</p>
+<h1>Поиск товаров и категорий</h1>
+<p>По названию, бренду, артикулу или варианту.</p>
+</div>
+<form class="vapelab-search-page-form" action="/search" method="get">
+<label>Поисковый запрос<input name="q" type="search" value="${esc(query)}" minlength="2" maxlength="120" required>
+</label>
+<label>Категория<select name="category_id">
+<option value="">Все категории</option>${options}</select>
+</label>
+<button type="submit">Найти</button>
+</form>
+<section id="vapelab-search-page" data-query="${esc(query)}" data-page="${page}" data-category-id="${selected || ""}" aria-live="polite">
+<div class="vapelab-search-page-categories">
+</div>
+<p class="vapelab-search-page-summary">${query ? "Ищем подходящие товары…" : "Для начала поиска введите запрос длиной от двух символов."}</p>
+<div class="vapelab-search-page-results seo-product-grid">
+</div>
+<nav class="vapelab-search-page-pagination" aria-label="Страницы результатов поиска">
+</nav>
+</section>
+</main>${siteFooter("Поиск по опубликованным товарам каталога VAPELAB.")}`;
   sendHtml(req, res, htmlDocument({ title, description, canonical: `${base}/search`, robots: "noindex, follow", body }));
 }
 
@@ -425,6 +548,10 @@ export async function servePublicRoute(req, res, pathname, base) {
   const decoded = (() => { try { return decodeURIComponent(pathname); } catch { return ""; } })();
   if (!decoded || decoded.includes("\\") || decoded.includes("\0") || decoded.split("/").some((part) => part === ".." || part.startsWith("."))) return false;
 
+  if (decoded === "/catalog/categories" || decoded === "/catalog/categories/") {
+    await renderCatalogDirectory(req, res, base);
+    return true;
+  }
   if (decoded === "/search" || decoded === "/search/") {
     await renderSearchPage(req, res, base);
     return true;
@@ -501,6 +628,7 @@ export async function buildSitemapXml(base) {
     entries.set(canonical, { canonical, lastmod, path: parsed.pathname });
   };
   add("/");
+  add("/catalog/categories");
   for (const row of categoryPages) add(`/${row.slug}`, row.updated_at, row.canonical_url);
   for (const row of childCategories) add(`/${row.slug}`, row.updated_at);
   for (const row of products) add(`/product/${row.slug}`, row.updated_at, row.canonical_url);

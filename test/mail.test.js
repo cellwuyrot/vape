@@ -63,7 +63,7 @@ test("SMTP EHLO использует mail domain VAPELAB", () => {
 
 test("почтовый сервер идёт отдельным compose stack с IMAPS, STARTTLS и persistent storage", () => {
   const compose = read("mail-server/compose.yaml");
-  const env = read("mail-server/mailserver.env");
+  const env = read("mail-server/mailserver.env.example");
   assert.match(compose, /docker-mailserver:17\.0\.0/);
   for (const port of ["25:25", "465:465", "587:587", "993:993"]) assert.ok(compose.includes(port));
   assert.match(compose, /\.\/docker-data\/dms\/mail-data:\/var\/mail/);

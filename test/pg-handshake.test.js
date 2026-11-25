@@ -300,7 +300,7 @@ test("драйвер поверх пула транслирует диалект
     assert.equal(parallel.length, 3);
 
     const inserted = await driver.run("INSERT INTO contacts (full_name) VALUES (?)", ["Петров"]);
-    assert.match(mock.state.queries.at(-1), /RETURNING id/, "INSERT должен получить RETURNING id");
+    assert.match(mock.state.queries.at(-1), /RETURNING \*/, "INSERT должен вернуть запись без требования колонки id");
     assert.equal(inserted.lastId, 42);
 
     await driver.close();

@@ -5,11 +5,11 @@
 import { toPostgres } from "../dialect.js";
 import { Connection, parseConnectionString } from "./pg-protocol.js";
 
-/** INSERT без RETURNING не сообщает идентификатор — добавляем его сами. */
+/** Возвращаем строку целиком: таблицы без колонки id тоже допускают INSERT. */
 function withReturningId(sql) {
   if (!/^\s*insert\s/i.test(sql)) return { sql, expectsId: false };
   if (/\breturning\b/i.test(sql)) return { sql, expectsId: true };
-  return { sql: `${sql.replace(/;\s*$/, "")} RETURNING id`, expectsId: true };
+  return { sql: `${sql.replace(/;\s*$/, "")} RETURNING *`, expectsId: true };
 }
 
 class Pool {

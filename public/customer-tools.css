@@ -105,3 +105,12 @@
   .vapelab-header-search { flex-basis:165px; min-width:145px; }
   .login-link { padding-inline:9px; font-size:11px; }
 }
+.vapelab-search-category,.vapelab-search-all { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:44px; padding:10px; border-radius:8px; color:#183139; text-decoration:none; font-size:13px; font-weight:650; }
+.vapelab-search-category span { color:#62747b; font-size:12px; font-weight:400; }
+.vapelab-search-category:hover,.vapelab-search-all:hover { background:#e7f7f5; }
+.vapelab-search-all { margin-top:6px; border-top:1px solid #dce7e8; color:#076c6d; }
+.vapelab-search-results a:focus-visible { outline:2px solid #078788; outline-offset:-2px; }
+
+.vapelab-search-icon { position:relative; width:14px; height:14px; flex:0 0 14px; }
+.vapelab-search-icon::before { content:""; position:absolute; top:1px; left:1px; width:8px; height:8px; border:1.5px solid #647785; border-radius:50%; }
+.vapelab-search-icon::after { content:""; position:absolute; width:6px; height:1.5px; top:10px; left:9px; background:#647785; transform:rotate(45deg); transform-origin:left center; }

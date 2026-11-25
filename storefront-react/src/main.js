@@ -53,7 +53,7 @@ function useStore() {
   useEffect(() => {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 12000);
-    fetch('/api/store/public', { headers: { Accept: 'application/json' }, signal: controller.signal })
+    fetch('/api/store/navigation', { headers: { Accept: 'application/json' }, signal: controller.signal })
       .then(async (response) => {
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(payload.detail || `Ошибка загрузки: ${response.status}`);
@@ -169,8 +169,6 @@ function Categories({ categories, loading, error, settings }) {
   const groups = useMemo(() => getCategoryLinks(categories), [categories]);
   const groupBySlug = new Map(groups.map((group) => [group.slug, group]));
   const featured = PRIMARY.map((item) => ({ ...item, ...(groupBySlug.get(item.slug) || {}), label: item.label, exists: groupBySlug.has(item.slug) }));
-  const allLinks = groups.filter((item) => !PRIMARY.some((main) => main.slug === item.slug));
-  const fallback = PRIMARY.map(({ slug, label }) => ({ slug, label }));
   return h('section', { className: 'categories-section', id: 'categories' },
     h('div', { className: 'container' },
       h('div', { className: 'section-heading categories-heading', 'data-reveal': true },
@@ -179,27 +177,7 @@ function Categories({ categories, loading, error, settings }) {
       ),
       loading ? h('div', { className: 'category-grid skeleton-grid', 'aria-label': 'Загрузка категорий' }, Array.from({ length: 6 }, (_, index) => h('div', { className: 'category-skeleton skeleton', key: index }))) :
         h('div', { className: 'category-grid' }, featured.map((item) => h('div', { className: 'category-reveal', 'data-reveal': true, key: item.slug }, h(CategoryCard, { item })))),
-      h('details', { className: 'all-category-details' },
-        h('summary', null, h('span', null, 'Все категории и подразделы'), h('span', { className: 'summary-plus', 'aria-hidden': true }, '+')),
-        h('div', { className: 'all-category-list' }, (groups.length ? groups : fallback).map((item) => {
-          const children = categories.filter((category) => category.parent_id && category.public_slug === item.slug || category.parent_id && groups.some((root) => root.slug === item.slug && root.items.some((parent) => parent.id === category.parent_id)));
-          return h('details', { className: 'category-group', key: item.slug },
-            h('summary', null,
-              h('span', { className: 'category-group-summary-copy' }, h('strong', {}, item.label), item.featured_product ? h('small', {}, item.featured_product.name) : h('small', {}, 'Открыть раздел')),
-              item.featured_product?.image_url ? h('img', { className: 'category-group-image', src: safeUrl(item.featured_product.image_url), alt: item.featured_product.name, loading: 'lazy' }) : null,
-              h('span', { className: 'category-group-arrow', 'aria-hidden': true }, '↗')
-            ),
-            h('div', { className: 'category-group-links' },
-              h('a', { href: `/${encodeURIComponent(item.slug)}`, className: 'category-group-all' }, `Все позиции: ${item.label}`),
-              children.map((child) => h('a', { href: `/${encodeURIComponent(child.slug)}`, key: child.id, className: 'category-subcategory-link' },
-                child.featured_product?.image_url ? h('img', { src: safeUrl(child.featured_product.image_url), alt: '', loading: 'lazy' }) : h('span', { className: 'category-subcategory-placeholder' }, 'V'),
-                h('span', {}, h('strong', {}, child.name), child.featured_product ? h('small', {}, child.featured_product.name) : null),
-                h('span', { className: 'category-card-arrow', 'aria-hidden': true }, '↗')
-              ))
-            )
-          );
-        }))
-      ),
+      h('a', { className: 'catalog-directory-link', href: '/catalog/categories' }, h('span', null, 'Все категории и подразделы'), h('span', { 'aria-hidden': true }, '↗')),
       error ? h('p', { className: 'load-notice', role: 'status' }, error) : null
     )
   );

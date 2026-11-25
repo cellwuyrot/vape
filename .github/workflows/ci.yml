@@ -22,11 +22,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Проверить, что зависимостей нет
-        run: |
-          npm install --omit=dev
-          test ! -d node_modules -o -z "$(ls -A node_modules 2>/dev/null)" \
-            || (echo "Появились внешние зависимости — это нарушает обещание установки без npm-реестра" && exit 1)
+      - run: npm ci --omit=dev
       - run: npm run lint
 
   test-sqlite:
@@ -37,6 +33,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - run: npm ci --omit=dev
       - run: npm test
       - name: Проверить цикл резервного копирования целиком
         run: |
@@ -69,11 +66,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - run: npm ci --omit=dev
       - name: Накатить миграции на чистую базу
         run: npm run migrate
       - name: Повторный накат должен быть пустым
         run: npm run migrate
-      - run: npm test
+      # Остальные тесты создают изолированные SQLite-базы; PostgreSQL-тесты
+      # используют свою отдельную схему, переданную через TEST_POSTGRES_URL.
+      - name: Тесты SQLite и интеграция PostgreSQL
+        run: TEST_POSTGRES_URL="$DATABASE_URL" DATABASE_URL= npm test
 
   # Матрица версий: node:22 в образе, но разработчики нередко сидят на свежей
   compatibility:
@@ -88,6 +89,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
+      - run: npm ci --omit=dev
       - run: npm test
 
   docker:
@@ -101,7 +103,10 @@ jobs:
       - name: Проверить, что контейнер поднимается и готов
         run: |
           docker run -d --name rucrm-check \
-            -e SECRET_KEY=ci-secret-key-достаточной-длины \
+            -e SECRET_KEY="$(openssl rand -hex 32)" \
+            -e PUBLIC_URL=https://ci.example.invalid \
+            -e TELEGRAM_WEBHOOK_SECRET="$(openssl rand -hex 32)" \
+            -e WAZZUP_WEBHOOK_SECRET="$(openssl rand -hex 32)" \
             -e ADMIN_EMAIL=admin@vaplab.ru \
             -e MAIL_FROM=info@vaplab.ru \
             -e SMTP_URL=https://mail.example.invalid/send \

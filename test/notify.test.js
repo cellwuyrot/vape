@@ -23,7 +23,7 @@ test("email webhook получает корректный VAPELAB payload", asyn
     config.mailFrom="info@vaplab.ru";
     const result=await sendEmail("user@example.ru","Код подтверждения VAPELAB","123456");
     assert.equal(result.ok,true);
-    assert.deepEqual(received,{from:"info@vaplab.ru",to:"user@example.ru",subject:"Код подтверждения VAPELAB",text:"123456"});
+    assert.deepEqual(received,{from_email:"info@vaplab.ru",to:"user@example.ru",subject:"Код подтверждения VAPELAB",text:"123456"});
   } finally {
     config.smtpUrl=previousUrl; config.mailFrom=previousFrom;
     await new Promise((resolve)=>server.close(resolve));

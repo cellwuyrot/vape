@@ -66,12 +66,12 @@ test('OriginKit Hero 58 устанавливается только автори
   assert.match(guide, /не хранится в этом передаваемом ZIP/i);
 });
 
-test('React home использует API, состояние загрузки, раскрывающиеся категории и безопасные ссылки', () => {
+test('React home использует лёгкий API, загрузку и ссылку на полный каталог', () => {
   const source = read('storefront-react/src/main.js');
-  assert.match(source, /fetch\('\/api\/store\/public'/);
+  assert.match(source, /fetch\('\/api\/store\/navigation'/);
   assert.match(source, /AbortController/);
   assert.match(source, /skeleton/);
-  assert.match(source, /all-category-details/);
+  assert.match(source, /catalog\/categories/);
   assert.match(source, /rel: 'noopener noreferrer'/);
   assert.match(source, /prefers-reduced-motion/);
 });
