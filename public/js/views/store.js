@@ -909,14 +909,19 @@ export async function renderStore(root) {
       const bulkCount = h("strong", {}, "Выбрано: 0");
       const bulkAction = h("select", {},
         h("option", { value: "" }, "Массовое действие"),
-        ...[["publish","Показать в каталоге"],["draft","Скрыть из каталога"],["archive","В архив"],["in_stock","Отметить: в наличии"],["out_of_stock","Отметить: отсутствует"],["preorder","Отметить: предзаказ"],["unknown","Наличие уточняется"],["delete","Удалить выбранные" ]].map(([value,label]) => h("option", { value }, label))
+        ...[["publish","Показать в каталоге"],["draft","Скрыть из каталога"],["archive","В архив"],["in_stock","Отметить: в наличии"],["out_of_stock","Отметить: отсутствует"],["preorder","Отметить: предзаказ"],["unknown","Наличие уточняется"],["enable_reservations","Разрешить бронирование"],["delete","Удалить выбранные" ]].map(([value,label]) => h("option", { value }, label))
       );
       const bulkApply = button("Применить", async () => {
         const ids = [...selectedProductIds];
         if (!ids.length || !bulkAction.value) return toast("Выберите товары и массовое действие");
         if (ids.length > 100) return toast("За одну операцию можно выбрать не более 100 товаров. Снимите часть отметок.");
         if (bulkAction.value === "delete" && !confirm(`Удалить выбранные товары (${ids.length}) без возможности восстановления?`)) return;
-        if (bulkAction.value !== "delete" && !confirm(`Применить действие к ${ids.length} товарам?`)) return;
+        if (bulkAction.value !== "delete") {
+          const confirmation = bulkAction.value === "enable_reservations"
+            ? `Разрешить бронирование для ${ids.length} выбранных товаров?`
+            : `Применить действие к ${ids.length} товарам?`;
+          if (!confirm(confirmation)) return;
+        }
         bulkApply.disabled = true;
         try {
           const result = await api("/store/products/bulk", { method: "POST", body: { ids, action: bulkAction.value } });

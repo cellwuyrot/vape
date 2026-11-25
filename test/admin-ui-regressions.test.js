@@ -64,8 +64,10 @@ test("витрина поддерживает массовую публикац�
   const server = await read("server/routes/store.js");
   assert.match(source, /selectedProductIds/);
   for (const label of ["Показать в каталоге", "Скрыть из каталога", "Отметить: в наличии", "Отметить: отсутствует", "Отметить: предзаказ"]) assert.ok(source.includes(label));
+  assert.ok(source.includes("Разрешить бронирование"));
   assert.match(source, /За одну операцию можно выбрать не более 100 товаров/);
   assert.match(server, /store\/products\/bulk/);
+  assert.match(server, /UPDATE store_products SET is_reservable=1/);
   assert.match(server, /restock-subscriptions\/:id\/notify/);
 });
 

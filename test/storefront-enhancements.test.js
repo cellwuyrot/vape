@@ -450,6 +450,20 @@ test("массовое управление меняет публикацию и
   assert.match(tooMany.data.detail, /не более 100/);
 });
 
+test("массовое действие разрешает бронирование, не меняя публикацию и наличие", async () => {
+  const first = await repo.insert("store_products", { name: "Бронирование массово 1", slug: "bulk-reservable-1", status: "draft", availability_status: "out_of_stock", is_reservable: 0 });
+  const second = await repo.insert("store_products", { name: "Бронирование массово 2", slug: "bulk-reservable-2", status: "published", availability_status: "preorder", is_reservable: 0 });
+  const updated = await request("/api/store/products/bulk", { method: "POST", body: { ids: [first.id, second.id], action: "enable_reservations" } });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.data.affected, 2);
+  for (const [id, status, availabilityStatus] of [[first.id, "draft", "out_of_stock"], [second.id, "published", "preorder"]]) {
+    const product = await db.get("SELECT is_reservable,status,availability_status FROM store_products WHERE id=?", [id]);
+    assert.equal(Number(product.is_reservable), 1);
+    assert.equal(product.status, status);
+    assert.equal(product.availability_status, availabilityStatus);
+  }
+});
+
 test("ежедневная общая подборка не включает товары 18+", async () => {
   const safe = await repo.insert("store_products", { name: "Подборка без возрастного ограничения", slug: "daily-safe-test", status: "published", is_18_plus: 0 });
   const adult = await repo.insert("store_products", { name: "Возрастная тестовая позиция", slug: "daily-adult-test", status: "published", is_18_plus: 1 });
