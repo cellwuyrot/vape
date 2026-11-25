@@ -41,9 +41,9 @@
     popup.setAttribute("aria-live", "polite");
     const content = document.createElement("div");
     const title = document.createElement("strong");
-    title.textContent = "Заявка принята";
+    title.textContent = "Бронирование подтверждено";
     const message = document.createElement("p");
-    message.textContent = "Ожидайте обратной связи от менеджера VAPELAB.";
+    message.textContent = "Ожидайте связи менеджера VAPELAB.";
     content.append(title, message);
     if (number) {
       const reference = document.createElement("small");
@@ -117,8 +117,8 @@
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.detail || "Не удалось отправить запрос");
       if (feedback) feedback.textContent = result.number
-        ? `Заявка принята. Номер бронирования: ${result.number}. Ожидайте обратной связи.`
-        : "Заявка принята. Ожидайте обратной связи.";
+        ? `Бронирование подтверждено. Номер бронирования: ${result.number}. Ожидайте связи менеджера.`
+        : "Бронирование подтверждено. Ожидайте связи менеджера.";
       showSuccessPopup(result.number);
       form.reset();
       updatePriceSummary(form);

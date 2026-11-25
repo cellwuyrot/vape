@@ -31,7 +31,7 @@ post("/api/store/reservations", async ({ body, req }) => {
   const productId = Number(body.product_id);
   if (!Number.isSafeInteger(productId) || productId < 1) throw new HttpError(400, "Не удалось определить товар");
   const product = await db.get("SELECT id,name,slug,sku,status,robots_index,availability_status,is_18_plus,is_reservable,price_raw,currency FROM store_products WHERE id=?", [productId]);
-  if (!product || product.status !== "published" || Number(product.robots_index ?? 1) === 0) throw new HttpError(404, "Товар больше недоступен в каталоге");
+  if (!product || product.status !== "published") throw new HttpError(404, "Товар больше недоступен в каталоге");
   if (Number(product.is_reservable) === 0) throw new HttpError(409, "Для этого товара временно недоступно бронирование");
   const variants = await db.all("SELECT id,name,sku,price_raw,currency,availability_status FROM store_product_variants WHERE product_id=? ORDER BY sort_order,id", [productId]);
   let variant = null;
