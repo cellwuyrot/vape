@@ -77,6 +77,57 @@ test("папка: предпросмотр, привязка, повтор и н
   const unknown = await call("/api/store/images/import", "POST", png, { ...headers, "X-File-Path": encodeURIComponent("images/MODEL-CHECK/НЕИЗВЕСТНЫЙ/photo.png") }); assert.equal(unknown.data.status, "unmatched_variant");
 });
 
+test("папка: ключевые слова сопоставляют вариант на глубокой вложенности, неоднозначные фото не привязываются", async () => {
+  const productResponse = await call("/api/store/products", "POST", {
+    name: "MOK FWRD", slug: "mok-fwrd-keyword-test", sku: "MOK-FWRD-KEYWORD-TEST", brand: "MOK FWRD",
+  });
+  assert.equal(productResponse.status, 201);
+  const keywordProductId = productResponse.data.id;
+  const bronze = await call(`/api/store/products/${keywordProductId}/variants`, "POST", {
+    name: "Бронза — Сияющий янтарь", color: "Бронза", sku: "MOK-BRONZE-AMBER",
+  });
+  const ruby = await call(`/api/store/products/${keywordProductId}/variants`, "POST", {
+    name: "Бронза — Рубиновый дым", color: "Бронза", sku: "MOK-BRONZE-RUBY",
+  });
+  assert.equal(bronze.status, 201); assert.equal(ruby.status, 201);
+
+  const filename = "MOK FWRD Бронза - Сияющий янтарь__01__бронза.png";
+  const headers = {
+    "X-File-Name": encodeURIComponent(filename),
+    "X-File-Path": encodeURIComponent(`incoming/партия 2026/MOK FWRD/серия янтарь/обработка/кадр 01/${filename}`),
+  };
+  const preview = await call("/api/store/images/import", "POST", png, { ...headers, "X-Import-Preview": "1" });
+  assert.equal(preview.data.status, "matched");
+  assert.equal(Number(preview.data.product_id), Number(keywordProductId));
+  assert.equal(Number(preview.data.variant_id), Number(bronze.data.id));
+  assert.equal((await db.get("SELECT COUNT(*) AS n FROM store_product_images WHERE product_id=?", [keywordProductId])).n, 0, "предпросмотр не должен сохранять файл или запись");
+
+  const saved = await call("/api/store/images/import", "POST", Buffer.concat([png, Buffer.from("keyword-image")]), headers);
+  assert.equal(saved.status, 201);
+  assert.equal(saved.data.status, "matched");
+  assert.equal(saved.data.matched_by, "variant-keywords");
+  const savedRow = await db.get("SELECT variant_id,original_filename,original_path FROM store_product_images WHERE id=?", [saved.data.image_id]);
+  assert.equal(Number(savedRow.variant_id), Number(bronze.data.id));
+  assert.equal(savedRow.original_filename, filename);
+  assert.match(savedRow.original_path, /партия 2026\/MOK FWRD\/серия янтарь\/обработка\/кадр 01/);
+
+  const unclearName = "MOK FWRD Бронза__02.png";
+  const unclear = await call("/api/store/images/import", "POST", Buffer.concat([png, Buffer.from("ambiguous-keyword-image")]), {
+    "X-File-Name": encodeURIComponent(unclearName),
+    "X-File-Path": encodeURIComponent(`incoming/MOK FWRD/серия бронза/кадр 02/${unclearName}`),
+  });
+  assert.equal(unclear.data.status, "ambiguous_variant", "если одно ключевое слово подходит двум вариантам, выбор должен остаться ручным");
+
+  const beforeUnmatched = await db.get("SELECT COUNT(*) AS n FROM store_product_images WHERE product_id=?", [keywordProductId]);
+  const unmatchedName = "MOK FWRD неизвестный цвет.png";
+  const unmatched = await call("/api/store/images/import", "POST", Buffer.concat([png, Buffer.from("unmatched-keyword-image")]), {
+    "X-File-Name": encodeURIComponent(unmatchedName),
+    "X-File-Path": encodeURIComponent(`incoming/MOK FWRD/неизвестный вариант/${unmatchedName}`),
+  });
+  assert.equal(unmatched.data.status, "unmatched_variant");
+  assert.equal((await db.get("SELECT COUNT(*) AS n FROM store_product_images WHERE product_id=?", [keywordProductId])).n, beforeUnmatched.n, "несопоставленное изображение не должно сохраняться на сервере");
+});
+
 test("ошибка строки откатывает товар и категорию, остальные строки сохраняются", async () => {
   const mapping = { 0: "name", 1: "sku", 2: "category_name", 3: "is_18_plus" };
   const rows = [["Ошибочный импорт", "BAD-IMPORT", "Ошибочная категория", "неизвестно"], ["Хороший импорт", "GOOD-IMPORT", "", "0"]];

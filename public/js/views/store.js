@@ -835,7 +835,7 @@ export async function renderStore(root) {
         const progress = h("p", {}, "Подготовка…");
         const results = h("div", { style: { maxHeight: "45vh", overflow: "auto" } });
         const actions = h("div", { class: "row" });
-        const close = sheet("Импорт папки товаров и фото", h("div", {}, h("p", { class: "muted" }, "Папка может содержать одну таблицу CSV/XLSX и фотографии в подпапках SKU товара / SKU варианта. Таблица импортируется после проверки, затем отдельно подтверждаются фото. Ненайденные файлы не записываются."), progress, results, actions));
+        const close = sheet("Импорт папки товаров и фото", h("div", {}, h("p", { class: "muted" }, "Папка может содержать одну таблицу CSV/XLSX и фотографии в подпапках любой глубины. Товар и вариант ищутся по названию, артикулу и ключевым словам из имени файла и папок. Сначала каждый файл проверяется в предпросмотре; в каталоге сохраняются только подтверждённые совпадения. Непривязанные файлы в каталоге сервера не сохраняются, оригиналы на компьютере не удаляются."), progress, results, actions));
         let calls = 0;
         let windowStart = Date.now();
         const send = async (file, preview) => {

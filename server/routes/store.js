@@ -35,6 +35,36 @@ const normalizeMatch = (value) => String(value || "")
   .trim()
   .replace(/\s+/g, " ");
 
+const IMAGE_MATCH_STOP_WORDS = new Set([
+  "а", "без", "в", "во", "для", "до", "за", "из", "или", "и", "к", "на", "над", "не", "о", "об", "от", "по", "под", "при", "с", "со", "у",
+  "the", "and", "for", "from", "with",
+  "image", "images", "img", "photo", "photos", "picture", "pictures", "фото", "фотография", "изображение", "изображения", "картинка", "картинки",
+  "main", "front", "back", "original", "копия", "оригинал",
+]);
+const imageMatchTokens = (value) => normalizeMatch(value).split(" ")
+  .filter((token) => token.length > 1 && !/^\d+$/.test(token) && !IMAGE_MATCH_STOP_WORDS.has(token));
+const imageAliasScore = (query, alias) => {
+  const normalizedQuery = normalizeMatch(query);
+  const normalizedAlias = normalizeMatch(alias);
+  if (!normalizedQuery || !normalizedAlias) return 0;
+  if (normalizedQuery === normalizedAlias) return 1;
+  const queryTokens = new Set(imageMatchTokens(normalizedQuery));
+  const aliasTokens = [...new Set(imageMatchTokens(normalizedAlias))];
+  if (!queryTokens.size || !aliasTokens.length) return 0;
+  const shared = aliasTokens.filter((token) => queryTokens.has(token)).length;
+  if (aliasTokens.length === 1) return shared ? 0.72 : 0;
+  if (shared < 2) return 0;
+  const coverage = shared / aliasTokens.length;
+  return coverage >= 0.7 ? 0.65 + coverage * 0.35 : 0;
+};
+const rankImageMatches = (hints, items, aliasesFor) => items
+  .map((item) => ({
+    item,
+    score: Math.max(0, ...hints.flatMap((hint) => aliasesFor(item).map((alias) => imageAliasScore(hint, alias)))),
+  }))
+  .filter((candidate) => candidate.score > 0)
+  .sort((a, b) => b.score - a.score);
+
 const IMAGE_TYPES = {
   ".jpg": { mime: "image/jpeg", valid: (b) => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
   ".jpeg": { mime: "image/jpeg", valid: (b) => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
@@ -948,7 +978,7 @@ post("/api/store/images/import", async ({ req, user }) => {
   const products = await db.all("SELECT id,name,slug,sku,brand FROM store_products ORDER BY id");
   const aliasesFor = (product) => [product.name, product.slug?.replace(/-/g, " "), product.sku, `${product.brand || ""} ${product.name}`]
     .map(normalizeMatch).filter(Boolean);
-  // Поддерживаются оба вида: <товар>/<вариант>/photo.jpg и <товар>/<вариант>.jpg.
+  // Поддерживаются точные имена и ключевые слова в названиях файлов и на любой глубине папок.
   let exactMatches = [];
   let matchedByFolder = false;
   let productFolderIndex = -1;
@@ -962,10 +992,33 @@ post("/api/store/images/import", async ({ req, user }) => {
     }
   }
   if (!exactMatches.length) exactMatches = products.filter((product) => aliasesFor(product).includes(stem));
-  if (!exactMatches.length) return { data: { status: "unmatched", filename, relative_path: relativePath, detail: "Не найден товар по имени папки, названию файла, slug или SKU" } };
   if (exactMatches.length > 1) return { data: { status: "ambiguous", filename, candidates: exactMatches.map(({ id, name, sku }) => ({ id, name, sku })) } };
 
-  const product = exactMatches[0];
+  let product = exactMatches[0] || null;
+  let productMatchType = matchedByFolder ? "folder" : product ? "filename" : "";
+  if (!product) {
+    // Фаззи-поиск включается только при совпадении минимум двух значимых слов
+    // и высокой доле совпадения, чтобы похожие товары не склеивались случайно.
+    const folderMatches = rankImageMatches(folderHints, products, aliasesFor).filter((candidate) => candidate.score >= 0.82);
+    if (folderMatches.length) {
+      const bestScore = folderMatches[0].score;
+      const bestMatches = folderMatches.filter((candidate) => bestScore - candidate.score < 0.04);
+      if (bestMatches.length > 1) return { data: { status: "ambiguous", filename, candidates: bestMatches.map(({ item }) => ({ id: item.id, name: item.name, sku: item.sku })) } };
+      product = bestMatches[0].item;
+      matchedByFolder = true;
+      productMatchType = "folder-keywords";
+      productFolderIndex = folderHints.findIndex((hint) => aliasesFor(product).some((alias) => imageAliasScore(hint, alias) >= bestScore - 0.01));
+    } else {
+      const filenameMatches = rankImageMatches([stem], products, aliasesFor).filter((candidate) => candidate.score >= 0.82);
+      if (!filenameMatches.length) return { data: { status: "unmatched", filename, relative_path: relativePath, detail: "Не найден товар по названию, артикулу или совпадающим ключевым словам в имени файла/папки" } };
+      const bestScore = filenameMatches[0].score;
+      const bestMatches = filenameMatches.filter((candidate) => bestScore - candidate.score < 0.04);
+      if (bestMatches.length > 1) return { data: { status: "ambiguous", filename, candidates: bestMatches.map(({ item }) => ({ id: item.id, name: item.name, sku: item.sku })) } };
+      product = bestMatches[0].item;
+      productMatchType = "filename-keywords";
+    }
+  }
+
   const variants = await db.all("SELECT id,name,sku,attributes_json FROM store_product_variants WHERE product_id=? ORDER BY sort_order,id", [product.id]);
   const variantAliases = (variant) => {
     const attributes = json(variant.attributes_json, {});
@@ -976,14 +1029,15 @@ post("/api/store/images/import", async ({ req, user }) => {
     ...(matchedByFolder ? folderHints.slice(0, productFolderIndex) : folderHints),
     stem,
   ].filter(Boolean);
-  const variantMatches = [];
-  for (const hint of variantHints) {
-    const matches = variants.filter((variant) => variantAliases(variant).includes(hint));
-    for (const variant of matches) if (!variantMatches.some((item) => Number(item.id) === Number(variant.id))) variantMatches.push(variant);
+  const rankedVariants = rankImageMatches(variantHints, variants, variantAliases).filter((candidate) => candidate.score >= 0.72);
+  if (rankedVariants.length) {
+    const bestScore = rankedVariants[0].score;
+    const bestMatches = rankedVariants.filter((candidate) => bestScore - candidate.score < 0.08);
+    if (bestMatches.length > 1) return { data: { status: "ambiguous_variant", filename, product_id: product.id, product_name: product.name, candidates: bestMatches.map(({ item }) => ({ id: item.id, name: item.name, sku: item.sku })) } };
   }
-  if (variantMatches.length > 1) return { data: { status: "ambiguous_variant", filename, product_id: product.id, product_name: product.name, candidates: variantMatches.map((variant) => ({ id: variant.id, name: variant.name, sku: variant.sku })) } };
-  if (matchedByFolder && productFolderIndex > 0 && !variantMatches.length) return { data: { status: "unmatched_variant", filename, relative_path: relativePath, product_id: product.id, detail: "Папка варианта не совпала с существующим вариантом; фото не загружено" } };
-  const variant = variantMatches[0] || null;
+  const variantMatch = rankedVariants[0] || null;
+  if (matchedByFolder && productFolderIndex > 0 && !variantMatch) return { data: { status: "unmatched_variant", filename, relative_path: relativePath, product_id: product.id, detail: "Товар найден, но ключевых слов варианта недостаточно; фото не загружено" } };
+  const variant = variantMatch?.item || null;
   const hash = crypto.createHash("sha256").update(raw).digest("hex");
   const duplicate = await db.get("SELECT id,url_original FROM store_product_images WHERE product_id=? AND COALESCE(variant_id,0)=? AND content_sha256=? LIMIT 1", [product.id, variant?.id || 0, hash]);
   if (duplicate) return { data: { status: "duplicate", filename, relative_path: relativePath, product_id: product.id, product_name: product.name, variant_id: variant?.id || null, variant_name: variant?.name || null, image_id: duplicate.id } };
@@ -1003,7 +1057,7 @@ post("/api/store/images/import", async ({ req, user }) => {
     position: Number(positionRow?.position || 0), source_url: "", download_status: "local", original_filename: filename, original_path: relativePath, content_sha256: hash,
   });
   await audit(user.id, "store_image_import", "store_product", product.id, { filename, url: publicUrl, variant_id: variant?.id || null }, clientIp(req));
-  return { status: 201, data: { status: "matched", filename, relative_path: relativePath, matched_by: variant ? "variant-folder-or-name" : matchedByFolder ? "folder" : "filename", product_id: product.id, product_name: product.name, variant_id: variant?.id || null, variant_name: variant?.name || null, image_id: image.id, url: publicUrl } };
+  return { status: 201, data: { status: "matched", filename, relative_path: relativePath, matched_by: variant ? "variant-keywords" : productMatchType, product_id: product.id, product_name: product.name, variant_id: variant?.id || null, variant_name: variant?.name || null, image_id: image.id, url: publicUrl } };
 }, { auth: true, rawBody: true });
 
 const normalizeNewsInput = (body, existing = {}) => {
