@@ -444,3 +444,59 @@
 .variant-gallery-controls[hidden] { display:none; }
 .variant-gallery-controls button { cursor:pointer; min-width:44px; min-height:44px; border:1px solid #aaa; border-radius:8px; background:transparent; color:inherit; }
 .seo-product-long-description { white-space:pre-line; }
+/* Category directory: dense, scannable lists with a stable filter bar. */
+.catalog-directory { padding-bottom:80px; }
+.catalog-directory [hidden] { display:none !important; }
+.catalog-intro { padding:28px 0 32px; }
+.catalog-intro h1 { margin:10px 0; font-size:clamp(30px,4vw,46px); line-height:1.15; }
+.catalog-intro p:last-child { max-width:68ch; color:#586773; font-size:16px; line-height:1.55; }
+.catalog-layout { display:grid; grid-template-columns:240px minmax(0,1fr); align-items:start; gap:32px; }
+.catalog-sidebar { position:sticky; top:100px; padding:16px; border:1px solid #dce3e8; border-radius:12px; background:#f7f9fa; }
+.catalog-sidebar h2 { margin:0 0 12px; font-size:15px; }
+.catalog-sidebar nav { display:grid; gap:3px; max-height:65vh; overflow:auto; }
+.catalog-sidebar nav a { display:flex; justify-content:space-between; align-items:center; gap:12px; min-height:44px; padding:8px 10px; border-radius:7px; color:#30414b; text-decoration:none; font-size:14px; line-height:1.35; }
+.catalog-sidebar nav a:hover,.catalog-sidebar nav a[aria-current] { background:#dff5f3; color:#075b5b; }
+.catalog-sidebar nav a span { flex:none; color:#5b7079; font-size:13px; }
+.catalog-controls { display:grid; gap:8px; }
+.catalog-controls label,.catalog-alphabet-label { color:#243840; font-size:14px; font-weight:700; }
+.catalog-search-row { display:flex; gap:8px; }
+.catalog-search-row input,select.catalog-mobile-select,.vapelab-search-page-form input,.vapelab-search-page-form select { width:100%; min-width:0; min-height:46px; padding:10px 13px; border:1px solid #bcc9ce; border-radius:8px; background:#fff; color:#111c20; font:inherit; font-size:16px; }
+.catalog-search-row button,.vapelab-search-page-form button { min-height:46px; padding:0 20px; border:0; border-radius:8px; background:#101c24; color:white; font:inherit; font-weight:700; cursor:pointer; }
+.catalog-mobile-select { display:none; }
+.catalog-alphabet-label { margin:24px 0 9px; }
+.catalog-alphabet { display:flex; flex-wrap:wrap; gap:6px; }
+.catalog-alphabet a { display:grid; min-width:42px; min-height:42px; padding:0 8px; place-items:center; border:1px solid #d5dfe2; border-radius:7px; background:#fff; color:#253e45; text-decoration:none; font-size:14px; font-weight:650; }
+.catalog-alphabet a:hover,.catalog-alphabet a[aria-current] { border-color:#066e70; background:#e3f7f5; color:#075b5b; }
+.catalog-count { margin:20px 0; color:#5b6971; font-size:14px; }
+.catalog-empty { padding:20px; border:1px dashed #a9b8be; border-radius:8px; color:#43535b; font-size:15px; }
+.catalog-groups { display:grid; gap:25px; }
+.catalog-group { border:1px solid #dce3e7; border-radius:12px; overflow:hidden; background:#fff; }
+.catalog-group-heading { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; padding:17px 20px; background:#f6f9f9; border-bottom:1px solid #e0e8e9; }
+.catalog-group-heading h2 { margin:0; color:#13282f; font-size:18px; }
+.catalog-group-heading a { color:#086b6b; font-size:14px; font-weight:650; text-decoration:none; }
+.catalog-items { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); margin:0; padding:10px; list-style:none; }
+.catalog-items li { min-width:0; }
+.catalog-items a { display:flex; min-height:47px; align-items:center; justify-content:space-between; gap:10px; padding:9px 10px; border-radius:7px; color:#283b43; font-size:15px; line-height:1.35; text-decoration:none; overflow-wrap:anywhere; }
+.catalog-items a span:last-child { flex:none; color:#087d80; }
+.catalog-items a:hover { background:#ebf8f7; color:#075e5d; }
+.catalog-directory a:focus-visible,.catalog-directory button:focus-visible,.catalog-directory input:focus-visible,.catalog-directory select:focus-visible,.vapelab-search-page-form :focus-visible { outline:3px solid #078788; outline-offset:2px; }
+.vapelab-search-page-form { display:grid; grid-template-columns:minmax(0,2fr) minmax(180px,1fr) auto; align-items:end; gap:12px; margin:24px 0 32px; }
+.vapelab-search-page-form label { display:grid; gap:7px; color:#30414b; font-size:14px; font-weight:650; }
+.vapelab-search-page-categories { margin-bottom:24px; }
+.vapelab-search-page-categories:empty { display:none; }
+.vapelab-search-page-categories h2 { margin:0 0 10px; font-size:18px; }
+.vapelab-search-page-categories>div { display:flex; flex-wrap:wrap; gap:8px; }
+.vapelab-search-page-categories a { padding:10px 14px; border:1px solid #bed6d7; border-radius:8px; color:#075e60; background:#f2fbfa; text-decoration:none; font-size:14px; }
+@media(max-width:760px) {
+  .catalog-layout { display:block; }
+  .catalog-enhanced .catalog-sidebar { display:none; }
+  .catalog-enhanced .catalog-mobile-select { display:block; }
+  .catalog-sidebar { position:static; margin-bottom:20px; }
+  .catalog-sidebar nav { max-height:260px; }
+  .catalog-items { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .catalog-intro { padding:18px 0 25px; }
+  .vapelab-search-page-form { grid-template-columns:1fr; }
+}
+@media(max-width:380px) { .catalog-items { grid-template-columns:1fr; } }
+
+.seo-search-page .seo-page-heading h1 { font-size:clamp(30px,4vw,46px); line-height:1.15; }

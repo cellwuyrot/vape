@@ -357,3 +357,8 @@ body { font-size: 16px; }
 @media(prefers-reduced-motion:reduce) {
   .category-card-spotlight,.category-card,.category-card-image,.category-card-featured,.category-group,.category-group-image,.category-subcategory-link { transition:none !important; transform:none !important; }
 }
+/* A compact entry point replaces nested category accordions on the homepage. */
+.catalog-directory-link { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:68px; margin-top:18px; padding:0 22px; border:1px solid #dfe4e8; border-radius:10px; background:#fff; color:#14212a; text-decoration:none; font-size:15px; font-weight:650; }
+.catalog-directory-link span:last-child { color:#087d80; font-size:22px; }
+.catalog-directory-link:hover,.catalog-directory-link:focus-visible { border-color:#0c8989; background:#f4fbfa; }
+.catalog-directory-link:focus-visible { outline:3px solid #087d80; outline-offset:3px; }

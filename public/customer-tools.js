@@ -14,11 +14,11 @@
     search.className = "vapelab-header-search";
     search.innerHTML = `
       <form class="vapelab-search-form" role="search" autocomplete="off">
-        <span class="vapelab-search-icon" aria-hidden="true">⌕</span>
-        <input class="vapelab-search-input" type="search" name="q" placeholder="Найти товар, бренд или артикул" aria-label="Поиск товаров" minlength="2" maxlength="120" autocomplete="off" />
+        <span class="vapelab-search-icon" aria-hidden="true"></span>
+        <input class="vapelab-search-input" type="search" aria-expanded="false" aria-controls="vapelab-quick-results" name="q" placeholder="Найти товар, бренд или артикул" aria-label="Поиск товаров" minlength="2" maxlength="120" autocomplete="off" />
         <button type="submit" aria-label="Искать">Найти</button>
       </form>
-      <div class="vapelab-search-results" role="listbox" aria-label="Результаты поиска" hidden></div>`;
+      <div id="vapelab-quick-results" class="vapelab-search-results" role="region" aria-label="Подсказки поиска" aria-live="polite" hidden></div>`;
     const login = host.querySelector(".login-link");
     const menu = host.querySelector(".menu-toggle");
     host.insertBefore(search, login || menu || null);
@@ -30,24 +30,30 @@
     let activeRequest = null;
     let lastQuery = "";
 
-    const hide = () => { results.hidden = true; results.innerHTML = ""; };
+    const hide = () => { results.hidden = true; results.innerHTML = ""; input.setAttribute("aria-expanded", "false"); };
     const showMessage = (message) => {
       results.innerHTML = `<p class="vapelab-search-message">${esc(message)}</p>`;
       results.hidden = false;
+      input.setAttribute("aria-expanded", "true");
     };
     const render = (data) => {
-      const items = Array.isArray(data?.results) ? data.results : [];
-      if (!items.length) { showMessage("По вашему запросу ничего не найдено."); return; }
-      results.innerHTML = `<div class="vapelab-search-summary">Найдено: ${Number(data.total) || items.length}</div>${items.map((item) => {
+      const items = Array.isArray(data?.results) ? data.results.slice(0, 5) : [];
+      const categories = Array.isArray(data?.category_results) ? data.category_results.slice(0, 4) : [];
+      if (!items.length && !categories.length) { showMessage("По вашему запросу ничего не найдено."); return; }
+      const categoryLinks = categories.map((item) => `<a class="vapelab-search-category" href="/${encodeURIComponent(item.slug)}">${esc(item.name)} <span>Категория ↗</span></a>`).join("");
+      const productLinks = items.map((item) => {
         const image = safeImage(item.image_url);
         const price = String(item.price_raw || "").trim();
-        return `<a class="vapelab-search-result" role="option" href="/product/${encodeURIComponent(item.slug)}">
+        return `<a class="vapelab-search-result" href="/product/${encodeURIComponent(item.slug)}">
           ${image ? `<img src="${esc(image)}" alt="" loading="lazy">` : `<span class="vapelab-search-result-placeholder">${esc(String(item.brand || item.name || "V").slice(0, 2))}</span>`}
           <span class="vapelab-search-result-copy"><strong>${esc(item.name)}</strong><small>${esc([item.brand, item.product_type, item.categories?.slice(0, 2).join(" · ")].filter(Boolean).join(" · "))}</small></span>
           ${price && !/^(?:не\s+указан[ао]?|нет\s+данных|n\/?a|[-—–])$/i.test(price) ? `<span class="vapelab-search-result-price">${esc(price)}</span>` : ""}
         </a>`;
-      }).join("")}`;
+      }).join("");
+      const all = `/search?q=${encodeURIComponent(input.value.trim())}`;
+      results.innerHTML = `${categories.length ? `<div class="vapelab-search-summary">Категории</div>${categoryLinks}` : ""}${items.length ? `<div class="vapelab-search-summary">Товары · ${Number(data.total) || items.length}</div>${productLinks}` : ""}<a class="vapelab-search-all" href="${all}">Все результаты поиска ↗</a>`;
       results.hidden = false;
+      input.setAttribute("aria-expanded", "true");
     };
 
     const runSearch = async () => {
@@ -74,7 +80,7 @@
       clearTimeout(timer);
       lastQuery = "";
       if (input.value.trim().length < 2) { hide(); return; }
-      timer = setTimeout(runSearch, 220);
+      timer = setTimeout(runSearch, 400);
     });
     input.addEventListener("focus", () => { if (input.value.trim().length >= 2) runSearch(); });
     form.addEventListener("submit", (event) => {
@@ -87,7 +93,11 @@
       input.value = params.get("q") || "";
     }
     document.addEventListener("pointerdown", (event) => { if (!search.contains(event.target)) hide(); });
-    input.addEventListener("keydown", (event) => { if (event.key === "Escape") hide(); });
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") hide();
+      if (event.key === "ArrowDown" && !results.hidden) { const first = results.querySelector("a"); if (first) { event.preventDefault(); first.focus(); } }
+    });
+    results.addEventListener("keydown", (event) => { if (event.key === "Escape") { hide(); input.focus(); } });
     return true;
   }
 
@@ -100,16 +110,20 @@
     const summary = root.querySelector(".vapelab-search-page-summary");
     const results = root.querySelector(".vapelab-search-page-results");
     const pagination = root.querySelector(".vapelab-search-page-pagination");
+    const categoryResults = root.querySelector(".vapelab-search-page-categories");
+    const categoryId = String(root.dataset.categoryId || "");
     const page = Math.max(1, Number(root.dataset.page || params.get("page") || 1) || 1);
     if (query.length < 2) return;
 
     const load = async () => {
       try {
-        const response = await fetch(`/api/store/search?q=${encodeURIComponent(query)}&page=${page}&page_size=24`, { headers: { Accept: "application/json" } });
+        const response = await fetch(`/api/store/search?q=${encodeURIComponent(query)}&page=${page}&page_size=24${categoryId ? `&category_id=${encodeURIComponent(categoryId)}` : ""}`, { headers: { Accept: "application/json" } });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(payload.detail || "Поиск временно недоступен");
         const data = payload.data || payload;
         const items = Array.isArray(data.results) ? data.results : [];
+        const foundCategories = Array.isArray(data.category_results) ? data.category_results : [];
+        if (categoryResults) categoryResults.innerHTML = foundCategories.length ? `<h2>Категории</h2><div>${foundCategories.map((c) => `<a href="/${encodeURIComponent(c.slug)}">${esc(c.name)} ↗</a>`).join("")}</div>` : "";
         summary.textContent = `Найдено товаров: ${Number(data.total) || 0}. Страница ${data.page || 1} из ${data.total_pages || 1}.`;
         results.innerHTML = items.length ? items.map((item) => {
           const image = safeImage(item.image_url);
@@ -121,7 +135,7 @@
         const current = Number(data.page) || 1;
         const totalPages = Number(data.total_pages) || 1;
         if (totalPages > 1) {
-          const makeLink = (target, label, extra = "") => `<a class="vapelab-search-page-page ${extra}" href="/search?q=${encodeURIComponent(query)}&page=${target}" ${target === current ? 'aria-current="page"' : ""}>${label}</a>`;
+          const makeLink = (target, label, extra = "") => `<a class="vapelab-search-page-page ${extra}" href="/search?q=${encodeURIComponent(query)}${categoryId ? `&category_id=${encodeURIComponent(categoryId)}` : ""}&page=${target}" ${target === current ? 'aria-current="page"' : ""}>${label}</a>`;
           const pages = new Set([1, totalPages, current - 1, current, current + 1].filter((number) => number >= 1 && number <= totalPages));
           const ordered = [...pages].sort((a, b) => a - b);
           let links = "";
